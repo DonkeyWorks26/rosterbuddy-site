@@ -3,20 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>RosterBuddy sign-in</title>
+    <title>Returning to RosterBuddy…</title>
     <style>body{margin:0;padding:2rem;font:16px/1.5 system-ui,sans-serif;background:#111827;color:#f9fafb}main{max-width:36rem;margin:10vh auto;padding:1.5rem;border:1px solid #374151;border-radius:1rem;background:#1f2937}a{color:#fbbf24}</style>
   </head>
   <body>
     <main>
       <h1>Returning to RosterBuddy…</h1>
-      <p>Your sign-in link is being handed back to the RosterBuddy app.</p>
-      <p id="fallback" hidden>If the app does not open, install/open RosterBuddy and tap the sign-in link again.</p>
+      <p>Your sign-in link is being handed back to the RosterBuddy web app.</p>
+      <p><a id="fallback" href="./index.html">Continue to RosterBuddy</a></p>
     </main>
     <script>
       (function () {
-        var target = 'rosterbuddy://auth/callback' + (window.location.search || '') + (window.location.hash || '');
+        var target = './index.html' + (window.location.search || '') + (window.location.hash || '');
         window.location.replace(target);
-        setTimeout(function () { document.getElementById('fallback').hidden = false; }, 1500);
       }());
     </script>
   </body>

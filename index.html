@@ -1,76 +1,1273 @@
 <!doctype html>
-<html lang="en-AU">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RosterBuddy by DonkeyWorks</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #111827;
-      --card: #1f2937;
-      --text: #f9fafb;
-      --muted: #d1d5db;
-      --accent: #f59e0b;
-      --border: #374151;
-    }
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: radial-gradient(circle at top, #263246 0, var(--bg) 48rem);
-      color: var(--text);
-      line-height: 1.6;
-    }
-    main {
-      max-width: 820px;
-      margin: 0 auto;
-      padding: 48px 20px;
-    }
-    .card {
-      background: rgba(31, 41, 55, 0.92);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 28px;
-      box-shadow: 0 20px 50px rgba(0,0,0,.25);
-    }
-    h1 { font-size: clamp(2rem, 6vw, 4rem); margin: 0 0 8px; }
-    h2 { margin-top: 32px; }
-    p, li { color: var(--muted); }
-    .tagline { font-size: 1.2rem; color: var(--text); }
-    a { color: var(--accent); }
-    .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
-    .button {
-      display: inline-block;
-      border: 1px solid var(--accent);
-      border-radius: 999px;
-      padding: 10px 16px;
-      text-decoration: none;
-      font-weight: 700;
-    }
-    footer { margin-top: 32px; font-size: .95rem; color: var(--muted); }
-  </style>
-</head>
-<body>
-  <main>
-    <section class="card">
-      <h1>RosterBuddy</h1>
-      <p class="tagline">Roster planning, pay estimates, and recovery tools for shift workers.</p>
-      <p>RosterBuddy helps shift workers plan rosters, estimate pay, and keep track of work patterns without turning life into a spreadsheet.</p>
-      <p>Built by <strong>DonkeyWorks</strong>, RosterBuddy is designed to be local-first: roster, pay settings, notes, and preferences stay on your device unless you choose to export, back up, copy, or share them.</p>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#153447" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" href="./icons/icon-192.png" />
+    <title>RosterBuddy V0.2.1</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell" aria-label="RosterBuddy clickable prototype">
+      <section class="phone" aria-label="Phone app preview">
 
-      <h2>Important disclaimer</h2>
-      <p>RosterBuddy provides estimates only. Pay, tax, allowance, roster, and recovery calculations may not match your employer's payroll system, workplace agreement, tax situation, or final payslip.</p>
-      <p>RosterBuddy is not payroll, legal, workplace-relations, financial, tax, or medical advice.</p>
+        <section class="app-screen hidden" id="screen-onboarding">
+          <div class="app-topbar">
+            <div>
+              <p class="eyebrow">First-run setup</p>
+              <h1>Set up RosterBuddy</h1>
+            </div>
+          </div>
+          <section class="notice beta-onboarding-card">
+            <strong>RosterBuddy saves locally on this device.</strong>
+            <span>Export a backup JSON before changing phones, reinstalling, or clearing app data.</span>
+          </section>
+          <section class="notice beta-onboarding-card">
+            <strong>Enter your own details.</strong>
+            <span>RosterBuddy starts blank. Add the basics below now, then change anything later in Settings.</span>
+          </section>
 
-      <div class="links">
-        <a class="button" href="privacy-policy.html">Privacy Policy</a>
-        <a class="button" href="support.html">Support</a>
-        <a class="button" href="mailto:donkeyworks26@gmail.com">Email DonkeyWorks</a>
+          <section class="theme-card onboarding-restore-card">
+            <p class="eyebrow">Already use RosterBuddy?</p>
+            <h2>Restore a backup</h2>
+            <p>This replaces the local data on this device with the rosters, shifts, pay rules and settings in your backup.</p>
+            <button class="primary-button full" type="button" id="onboarding-choose-backup">Choose backup file</button>
+            <input class="hidden-control" id="onboarding-import-backup-file" type="file" accept="application/json,.json" />
+          </section>
+
+          <section class="theme-card guided-setup-card" aria-labelledby="guided-setup-title">
+            <p class="eyebrow">Quick setup</p>
+            <h2 id="guided-setup-title">Three things to get started</h2>
+            <p>These answers set up your calendar and shift list. Pay rates and detailed rules can wait.</p>
+
+            <section class="guided-setup-step">
+              <div class="guided-step-heading"><span>1</span><div><strong>Pay cycle</strong><small>How your roster periods are grouped</small></div></div>
+              <div class="guided-setup-fields two-col">
+                <label>
+                  <span>Pay frequency</span>
+                  <select id="guided-pay-frequency">
+                    <option value="weekly">Weekly</option>
+                    <option value="fortnightly">Fortnightly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Known cycle start</span>
+                  <input id="guided-pay-cycle-start" type="date" />
+                </label>
+              </div>
+              <small>Choose the first day of one known pay cycle. RosterBuddy works out the rest.</small>
+            </section>
+
+            <section class="guided-setup-step">
+              <div class="guided-step-heading"><span>2</span><div><strong>Calendar</strong><small>Choose how each week is displayed</small></div></div>
+              <label>
+                <span>Week starts on</span>
+                <select id="guided-week-start">
+                  <option value="0">Sunday</option>
+                  <option value="1">Monday</option>
+                  <option value="6">Saturday</option>
+                </select>
+              </label>
+            </section>
+
+            <section class="guided-setup-step">
+              <div class="guided-step-heading"><span>3</span><div><strong>Your shifts</strong><small>Code, plain-English name and usual times</small></div></div>
+              <p class="guided-setup-note">Shift codes differ between workplaces. Enter the code printed on your roster, what it means to you, and the usual start and finish times. Leave both times blank if they vary.</p>
+              <div class="guided-shift-list" id="guided-shift-setup"></div>
+            </section>
+
+            <button class="primary-button full" type="button" id="save-guided-setup">Save setup</button>
+          </section>
+
+          <section class="settings-list onboarding-setup-routes">
+            <p class="eyebrow settings-section-label">More setup</p>
+            <button type="button" data-open="scan-roster"><span>Roster format &amp; identity</span><strong>Team or Personal</strong></button>
+            <button type="button" data-open="templates"><span>All shift details</span><strong>Edit</strong></button>
+            <button type="button" data-open="pay-rules"><span>Pay rates, loadings &amp; holidays</span><strong>Edit</strong></button>
+          </section>
+
+          <section class="notice beta-onboarding-card">
+            <strong>Estimates only.</strong>
+            <span>Pay and recovery figures are planning estimates. They are not payroll, tax, award, legal, medical or fatigue advice.</span>
+          </section>
+
+          <button class="primary-button full" type="button" id="complete-onboarding">Save and open Calendar</button>
+          <button class="secondary-button full" type="button" data-open="disclaimer">Read disclaimer</button>
+        </section>
+
+        <section class="app-screen compact-screen proto-screen" id="screen-calendar">
+          <div class="app-topbar hdr">
+            <div class="grow">
+              <p class="eyebrow brand-lockup sr-only"><span class="brand-logo" aria-hidden="true">RB</span> RosterBuddy™</p>
+              <p class="eyebrow">My calendar</p>
+              <h1 id="calendar-title">June roster</h1>
+            </div>
+          </div>
+
+          <div class="scroll cal">
+          <section class="summary-strip calendar-summary-strip sumrow" id="calendar-summary" aria-label="Month summary">
+            <article class="sum"><span>Hours</span><strong id="calendar-summary-hours">0h</strong></article>
+            <article class="sum"><span>Net est.</span><strong id="calendar-summary-net">$0</strong></article>
+            <article class="sum"><span>Nights</span><strong id="calendar-summary-nights">0</strong></article>
+          </section>
+
+          <section class="calendar-roster-switcher" id="calendar-roster-switcher" aria-label="Choose roster">
+            <label for="calendar-roster-select"><span class="eyebrow">Roster view</span><select id="calendar-roster-select"><option value="personal">My calendar</option></select></label>
+            <span id="calendar-shared-readonly" class="muted hidden-control">Shared rosters are read-only and never merge with My calendar.</span>
+          </section>
+
+          <section class="month-card compact-calendar-card mcard panelbox" aria-label="Calendar">
+            <div class="month-toolbar mbar">
+              <button class="ghost-button icon-btn" type="button" id="prev-month" aria-label="Previous month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+              <strong id="month-label">June 2026</strong>
+              <button class="ghost-button icon-btn" type="button" id="next-month" aria-label="Next month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+            </div>
+            <div class="cyc-pill" id="calendar-pay-cycle">Pay cycle</div>
+            <div class="weekdays wd-row" id="calendar-weekdays" aria-hidden="true">
+              <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
+            <section class="calendar-shared-panel hidden-control" id="calendar-shared-panel" aria-label="Shared schedule details">
+              <div id="calendar-shared-filters" class="shared-filters" role="group" aria-label="Show people"></div>
+              <div id="calendar-shared-detail" class="shared-detail hidden-control" aria-live="polite"></div>
+              <p id="calendar-shared-empty" class="muted hidden-control">Nobody has shared shifts for this month yet.</p>
+            </section>
+            <section class="calendar-empty-state hidden-control" id="calendar-empty-state" aria-live="polite">
+              <strong>No shifts in this month yet</strong>
+              <span>Add shifts manually or scan a roster to get started.</span>
+              <div class="calendar-empty-actions">
+                <button class="primary-button" id="calendar-empty-add" type="button" data-open="quick-add">Add shifts</button>
+                <button class="secondary-button" id="calendar-empty-scan" type="button" data-open="scan-roster">Scan roster</button>
+              </div>
+            </section>
+          </section>
+
+          <section class="calendar-details" id="calendar-details" aria-label="Shift legend">
+            <div class="calendar-details-heading">
+              <strong>Shift legend</strong>
+              <button class="secondary-button compact calendar-details-toggle" type="button" id="toggle-calendar-details" aria-label="Hide shift legend" aria-expanded="true" aria-controls="calendar-details-content" title="Hide shift legend"><span class="calendar-details-chevron" aria-hidden="true">⌄</span></button>
+            </div>
+            <div id="calendar-details-content">
+              <div class="calendar-legend hidden-control" id="calendar-legend" aria-label="Shift colour legend"></div>
+            </div>
+          </section>
+
+          <section class="calendar-day-strip panelbox" id="calendar-day-strip" aria-label="Selected day" aria-live="polite">
+            <span class="dbadge none" id="calendar-day-strip-badge" aria-hidden="true">–</span>
+            <div class="calendar-day-strip-text">
+              <strong id="calendar-day-strip-title">Selected day</strong>
+              <span id="calendar-day-strip-detail">No shift</span>
+            </div>
+            <button class="secondary-button compact btn sm" type="button" id="calendar-day-strip-edit" data-open="quick-add" aria-label="Edit shifts">Edit</button>
+          </section>
+          </div>
+
+          <div class="actions">
+            <button class="primary-button btn primary" type="button" id="calendar-actions-edit" data-open="quick-add">Edit shifts</button>
+            <button class="secondary-button btn secondary scan-entry-button" type="button" data-open="scan-roster">Scan roster</button>
+          </div>
+        </section>
+
+        <section class="app-screen hidden proto-screen" id="screen-quick-add">
+          <div class="app-topbar hdr">
+            <button class="icon-button icon-btn" type="button" data-back aria-label="Back">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+            </button>
+            <div class="grow">
+              <p class="eyebrow">Quick entry</p>
+              <h1>Edit shifts</h1>
+            </div>
+          </div>
+
+          <div class="scroll">
+            <div class="week" id="quick-week" role="group" aria-label="Choose a day"></div>
+
+            <div class="quick-selected-summary dayhead">
+              <h2 id="selected-count">0 dates</h2>
+              <span class="sub" id="selected-shift-label">No shift</span>
+            </div>
+            <p id="selected-public-holiday" class="day-detail-note"></p>
+
+            <section class="shift-picker choices" id="shift-picker" role="radiogroup" aria-label="Shift"></section>
+
+            <div class="quick-entry-panel">
+              <p class="group-label">Modifiers</p>
+              <div class="quick-modifier-row mods" aria-label="Entry modifiers">
+                <label class="toggle-row modifier-pill mod">
+                  <input id="casual-day" type="checkbox" />
+                  <span>Casual</span>
+                </label>
+                <label class="toggle-row modifier-pill mod">
+                  <input id="higher-duties-day" type="checkbox" />
+                  <span>Higher duties</span>
+                </label>
+                <label class="toggle-row modifier-pill mod">
+                  <input id="on-call-day" type="checkbox" />
+                  <span>On-call</span>
+                </label>
+                <button class="secondary-button modifier-pill mod" id="toggle-additional-hours" type="button" aria-expanded="false" aria-controls="manual-hours-panel">+ Hours</button>
+              </div>
+            </div>
+            <div class="manual-hours-card compact-hours-panel panelbox hours hidden-control" id="manual-hours-panel">
+              <label>
+                <span>Additional hours</span>
+                <input id="additional-hours-day" inputmode="decimal" placeholder="0" />
+              </label>
+              <label class="toggle-row manual-hours-toggle mod">
+                <input id="additional-hours-double-time" type="checkbox" />
+                <span>Double time</span>
+              </label>
+              <small>Manual extra hours. Double time pays base rate × 2 only.</small>
+            </div>
+
+            <section class="reminder-panel day-note-panel panelbox notebox" id="day-note-box" aria-label="Day note">
+              <div class="notesrow" id="day-note-row">
+                <span class="tx"><span class="t">Notes</span><span class="s empty-note" id="day-note-summary">No note for this day</span></span>
+                <button class="secondary-button btn sm" id="day-note-open" type="button">Add note</button>
+              </div>
+              <div class="noteedit hidden-control" id="day-note-editor">
+                <label for="day-note-text">Note for <span id="day-note-date-label">this day</span></label>
+                <input id="day-note-text" placeholder="e.g. Bring access card" />
+                <small>Private to this device. Only visible here, in Edit shifts.</small>
+                <div class="nact">
+                  <button class="text-button btn" id="clear-day-note" type="button">Clear note</button>
+                  <button class="text-button btn" id="day-note-cancel" type="button">Cancel</button>
+                  <button class="primary-button btn primary sm" id="save-day-note" type="button">Save note</button>
+                </div>
+              </div>
+            </section>
+
+            <details class="quick-entry-extras">
+              <summary>More options: other dates and reminder</summary>
+              <section class="month-card quick-month-card">
+                <div class="helper-row quick-helper-row">
+                  <span>Tap a date to jump to it</span>
+                  <button class="secondary-button compact" id="undo-entry" type="button">Back one</button>
+                </div>
+                <div class="mini-grid" id="quick-grid"></div>
+              </section>
+              <section class="reminder-panel">
+                <div>
+                  <p class="eyebrow">Reminder</p>
+                  <h2 id="reminder-date-label">No date selected</h2>
+                </div>
+                <label>
+                  <span>Note</span>
+                  <input id="reminder-text" placeholder="Fill paysheet" />
+                </label>
+                <div class="two-col">
+                  <label>
+                    <span>Repeat</span>
+                    <select id="reminder-repeat">
+                      <option value="none">Once</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="fortnightly">Fortnightly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </label>
+                  <button class="secondary-button" id="clear-reminder" type="button">Clear reminder</button>
+                </div>
+                <button class="primary-button full" id="save-reminder" type="button">Save reminder</button>
+              </section>
+            </details>
+          </div>
+
+          <section class="quick-save-bar actions" aria-label="Quick entry actions">
+            <button class="secondary-button btn secondary" id="clear-selection" type="button">Clear day</button>
+            <button class="primary-button btn primary" id="save-shifts" type="button">Save shifts</button>
+          </section>
+        </section>
+
+        <section class="app-screen hidden" id="screen-templates">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back">
+              <span class="icon-back"></span>
+            </button>
+            <div>
+              <p class="eyebrow">Templates</p>
+              <h1>Shift types</h1>
+            </div>
+          </div>
+
+          <section class="notice">
+            <strong>Unlimited shift types stay free</strong>
+            <span>Create every real shift time without a subscription gate.</span>
+          </section>
+
+          <section class="template-list" id="template-list"></section>
+
+          <button class="primary-button full" type="button" id="new-template">New shift template</button>
+        </section>
+
+        <section class="app-screen hidden" id="screen-edit-template">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back">
+              <span class="icon-back"></span>
+            </button>
+            <div>
+              <p class="eyebrow" id="edit-template-eyebrow">Edit template</p>
+              <h1 id="edit-template-title">Custom shift</h1>
+            </div>
+          </div>
+
+          <form class="form-stack">
+            <label>
+              <span>Name</span>
+              <input id="template-name" value="Afternoon" />
+            </label>
+            <label>
+              <span>Calendar marker (emoji or code)</span>
+              <input id="template-icon" value="A" maxlength="4" />
+              <small>Choose one compact marker for calendar cells. Examples: 🌙, N, 9T, OFF. Names stay in lists/details, not inside the month grid.</small>
+            </label>
+            <div>
+              <span class="field-label">Emoji shortcuts</span>
+              <div class="emoji-grid" id="emoji-grid" aria-label="Emoji shortcuts">
+                <div class="emoji-category"><strong>Work shifts</strong><div class="emoji-row">
+                  <button type="button" data-emoji="🌅">🌅</button><button type="button" data-emoji="☀️">☀️</button><button type="button" data-emoji="🌤️">🌤️</button><button type="button" data-emoji="🌇">🌇</button><button type="button" data-emoji="🌙">🌙</button><button type="button" data-emoji="🦉">🦉</button><button type="button" data-emoji="🚨">🚨</button><button type="button" data-emoji="📞">📞</button><button type="button" data-emoji="🏥">🏥</button><button type="button" data-emoji="🚑">🚑</button><button type="button" data-emoji="🧑‍⚕️">🧑‍⚕️</button><button type="button" data-emoji="👷">👷</button><button type="button" data-emoji="🛠️">🛠️</button><button type="button" data-emoji="🚚">🚚</button><button type="button" data-emoji="🚓">🚓</button><button type="button" data-emoji="🔥">🔥</button>
+                </div></div>
+                <div class="emoji-category"><strong>Leave & absence</strong><div class="emoji-row">
+                  <button type="button" data-emoji="🏖️">🏖️</button><button type="button" data-emoji="🤒">🤒</button><button type="button" data-emoji="🧘">🧘</button><button type="button" data-emoji="👪">👪</button><button type="button" data-emoji="🎓">🎓</button><button type="button" data-emoji="📚">📚</button><button type="button" data-emoji="🍼">🍼</button><button type="button" data-emoji="🛫">🛫</button>
+                </div></div>
+                <div class="emoji-category"><strong>Recovery & off</strong><div class="emoji-row">
+                  <button type="button" data-emoji="🏠">🏠</button><button type="button" data-emoji="🛌">🛌</button><button type="button" data-emoji="💤">💤</button><button type="button" data-emoji="☕">☕</button><button type="button" data-emoji="🌿">🌿</button><button type="button" data-emoji="🧖">🧖</button><button type="button" data-emoji="🧊">🧊</button><button type="button" data-emoji="📴">📴</button>
+                </div></div>
+                <div class="emoji-category"><strong>Pay & special</strong><div class="emoji-row">
+                  <button type="button" data-emoji="💰">💰</button><button type="button" data-emoji="⭐">⭐</button><button type="button" data-emoji="🎉">🎉</button><button type="button" data-emoji="📌">📌</button><button type="button" data-emoji="⚠️">⚠️</button><button type="button" data-emoji="⏱️">⏱️</button><button type="button" data-emoji="💵">💵</button><button type="button" data-emoji="📈">📈</button>
+                </div></div>
+                <div class="emoji-category"><strong>Personal</strong><div class="emoji-row">
+                  <button type="button" data-emoji="🏋️">🏋️</button><button type="button" data-emoji="🛒">🛒</button><button type="button" data-emoji="👨‍👩‍👧">👨‍👩‍👧</button><button type="button" data-emoji="🍽️">🍽️</button><button type="button" data-emoji="🎂">🎂</button><button type="button" data-emoji="🐶">🐶</button><button type="button" data-emoji="🏉">🏉</button><button type="button" data-emoji="🎮">🎮</button>
+                </div></div>
+              </div>
+            </div>
+            <div class="two-col">
+              <label>
+                <span>Start</span>
+                <input id="template-start" type="time" value="14:00" />
+              </label>
+              <label>
+                <span>Finish</span>
+                <input id="template-finish" type="time" value="22:30" />
+              </label>
+            </div>
+            <label>
+              <span>Unpaid break</span>
+              <input id="template-break" value="30 min" />
+            </label>
+            <label>
+              <span>Paid hours</span>
+              <input id="template-hours" inputmode="decimal" value="8" />
+              <small id="template-hours-hint">Auto-calculated from shift time</small>
+            </label>
+            <label>
+              <span>Pay type</span>
+              <select id="template-type">
+                <option value="work">Use normal pay rules</option>
+                <option value="leave">Leave / absence</option>
+                <option value="recovery">Unpaid / recovery day</option>
+              </select>
+            </label>
+            <div>
+              <span class="field-label">Colour</span>
+              <div class="swatches">
+                <button class="swatch aqua selected" type="button" data-colour="aqua" aria-label="Aqua"></button>
+                <button class="swatch coral" type="button" data-colour="coral" aria-label="Coral"></button>
+                <button class="swatch amber" type="button" data-colour="amber" aria-label="Amber"></button>
+                <button class="swatch violet" type="button" data-colour="violet" aria-label="Violet"></button>
+                <button class="swatch green" type="button" data-colour="green" aria-label="Green"></button>
+                <button class="swatch blue" type="button" data-colour="blue" aria-label="Blue"></button>
+                <button class="swatch pink" type="button" data-colour="pink" aria-label="Pink"></button>
+                <button class="swatch slate" type="button" data-colour="slate" aria-label="Slate"></button>
+                <button class="swatch red" type="button" data-colour="red" aria-label="Red"></button>
+                <button class="swatch lime" type="button" data-colour="lime" aria-label="Lime"></button>
+                <button class="swatch indigo" type="button" data-colour="indigo" aria-label="Indigo"></button>
+                <button class="swatch mint" type="button" data-colour="mint" aria-label="Mint"></button>
+                <button class="swatch gold" type="button" data-colour="gold" aria-label="Gold"></button>
+                <button class="swatch plum" type="button" data-colour="plum" aria-label="Plum"></button>
+                <button class="swatch orange" type="button" data-colour="orange" aria-label="Orange"></button>
+              </div>
+            </div>
+          </form>
+
+          <button class="danger-button full hidden-control" type="button" id="delete-template">Remove added shift</button>
+          <button class="primary-button full" type="button" id="save-template">Save template</button>
+        </section>
+
+        <section class="app-screen compact-screen hidden proto-screen" id="screen-pay">
+          <div class="app-topbar hdr">
+            <div class="grow">
+              <p class="eyebrow">Estimate only</p>
+              <h1 id="pay-title">June pay</h1>
+            </div>
+            <button class="secondary-button btn secondary sm" type="button" data-open="pay-rules" aria-label="Pay rules">Pay rules</button>
+          </div>
+
+          <div class="scroll">
+          <div class="fnsel">
+            <section class="period-toggle pay-cycle-toggle seg fnseg" id="fortnight-cycle-toggle" aria-label="Pay fortnight">
+              <button class="active" id="current-fortnight-pay" type="button" data-pay-cycle-offset="0" aria-pressed="true">Current fortnight</button>
+              <button id="next-fortnight-pay" type="button" data-pay-cycle-offset="1" aria-pressed="false">Next fortnight</button>
+            </section>
+            <p class="fnmeta" aria-live="polite"><b id="pay-cycle-name">Current fortnight</b><span id="pay-cycle-detail">Pay cycle dates</span></p>
+          </div>
+
+          <section class="period-toggle seg" aria-label="Payment view">
+            <button type="button" data-period="weekly">Weekly</button>
+            <button class="active" type="button" data-period="fortnightly">Fortnightly</button>
+            <button type="button" data-period="monthly">Monthly</button>
+          </section>
+
+          <section class="pay-hero panelbox hero" aria-live="polite">
+            <span class="eyebrow" id="pay-hero-label">Estimated net fortnightly</span>
+            <strong class="big" id="pay-hero-total">$6,214</strong>
+            <small class="meta" id="pay-hero-detail">156 hours · $6,214 gross estimate</small>
+          </section>
+
+          <section class="breakdown pay-hours-grid sumrow" aria-label="Pay cycle hours worked">
+            <article class="sum">
+              <span>Rostered hours</span>
+              <strong id="period-rostered-hours">0</strong>
+            </article>
+            <article class="sum">
+              <span>Additional</span>
+              <strong id="period-additional-hours">0</strong>
+            </article>
+            <article class="sum net-row">
+              <span>Total paid</span>
+              <strong id="period-total-hours">0</strong>
+            </article>
+          </section>
+
+          <section class="pay-breakdown">
+            <p class="group-label">Breakdown</p>
+            <div class="breakdown pay-stat-grid compact-pay-grid list">
+              <article class="pr">
+                <span>Base shifts</span>
+                <strong id="base-pay">$4,992</strong>
+              </article>
+              <article class="pr optional-row">
+                <span>After-hours loading</span>
+                <strong id="night-pay">$514</strong>
+              </article>
+              <article class="pr optional-row">
+                <span>Casual loading</span>
+                <strong id="casual-pay">$0</strong>
+              </article>
+              <article class="pr optional-row">
+                <span>Weekend penalty</span>
+                <strong id="weekend-pay">$548</strong>
+              </article>
+              <article class="pr optional-row">
+                <span>Public holiday</span>
+                <strong id="public-holiday-pay">$0</strong>
+              </article>
+              <article class="pr optional-row">
+                <span>Additional hours</span>
+                <strong id="additional-hours-pay">$0</strong>
+              </article>
+              <article class="pr optional-row">
+                <span>On-call allowance</span>
+                <strong id="on-call-pay">$0</strong>
+              </article>
+              <article class="pr optional-row">
+                <span>Overtime</span>
+                <strong id="overtime-pay">$160</strong>
+              </article>
+              <article class="pr sum">
+                <span>Gross before deductions</span>
+                <strong id="gross-pay">$6,214</strong>
+              </article>
+              <article class="pr">
+                <span>Total tax withheld</span>
+                <strong id="tax-pay">-$0</strong>
+              </article>
+              <article class="pr sum fin net-row">
+                <span>Employer bank deposit</span>
+                <strong id="net-pay">$0</strong>
+              </article>
+            </div>
+          </section>
+
+          <details class="pay-advanced-details">
+            <summary>Salary packaging & extra details</summary>
+            <section class="breakdown pay-stat-grid compact-pay-grid pay-advanced-grid list">
+              <article class="pr">
+                <span>Salary packaging</span>
+                <strong id="salary-sacrifice-pay">-$0</strong>
+              </article>
+              <article class="pr">
+                <span>Meals &amp; Entertainment</span>
+                <strong id="meals-entertainment-pay">-$0</strong>
+              </article>
+              <article class="pr">
+                <span>Additional tax</span>
+                <strong id="extra-tax-pay">-$0</strong>
+              </article>
+              <article class="pr">
+                <span>Salary sacrifice value</span>
+                <strong id="package-value-pay">$0</strong>
+              </article>
+              <article class="pr sum fin net-row">
+                <span>True usable take-home</span>
+                <strong id="usable-pay">$0</strong>
+              </article>
+            </section>
+          </details>
+
+          <p class="compact-disclaimer note">Estimate only · <span id="pay-period-copy">Fortnightly</span> · bank deposit should match payslip; salary sacrifice value may arrive separately through your packaging provider.</p>
+          <p class="compact-disclaimer note">Split overnight shifts across dates, after-hours by actual minutes, and public holidays automatically plus any manual dates in Pay rules.</p>
+          </div>
+        </section>
+
+        <section class="app-screen hidden" id="screen-pay-rules">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back">
+              <span class="icon-back"></span>
+            </button>
+            <div>
+              <p class="eyebrow">Pay setup</p>
+              <h1>Pay rules</h1>
+            </div>
+          </div>
+
+
+          <form class="form-stack" id="pay-rules-form">
+            <section class="rule-group">
+              <div class="rule-group-heading">
+                <strong>Base and penalties</strong>
+                <span>Keep common award inputs together.</span>
+              </div>
+              <div class="two-col">
+                <label>
+                  <span>Main role</span>
+                  <input id="pay-profile-main-rate" inputmode="decimal" value="$48.81" />
+                </label>
+                <label>
+                  <span>Higher duties</span>
+                  <input id="pay-profile-higher-rate" inputmode="decimal" value="$51.64" />
+                </label>
+              </div>
+              <p class="compact-disclaimer">Casual loading is fixed at 25% and is applied with the Casual checkbox when entering a shift.</p>
+              <label>
+                <span>On-call allowance</span>
+                <input id="on-call-allowance" inputmode="decimal" value="$0" />
+                <small>Fixed standby amount added once for each day with the On-call checkbox ticked.</small>
+              </label>
+              <div class="two-col">
+                <label>
+                  <span>Saturday</span>
+                  <input id="sat-rate" inputmode="decimal" value="1.50x" />
+                </label>
+                <label>
+                  <span>Sunday</span>
+                  <input id="sun-rate" inputmode="decimal" value="1.75x" />
+                </label>
+              </div>
+              <div class="two-col">
+                <label>
+                  <span>After-hours loading</span>
+                  <input id="night-rate" inputmode="decimal" value="0%" />
+                </label>
+                <label>
+                  <span>Starts after</span>
+                  <input id="after-hours-start" inputmode="decimal" value="19:00" />
+                </label>
+              </div>
+              <div class="rule-group-heading compact-rule-note">
+                <strong>Manual public holidays</strong>
+                <span>Common Australian/Tasmanian public holidays are detected automatically. Add manual dates here for workplace, regional, or one-off exceptions.</span>
+              </div>
+              <label>
+                <span>Public holiday dates</span>
+                <input id="public-holiday-dates" inputmode="text" placeholder="08-06-2026, 25-12-2026" />
+                <small>Use DD-MM-YYYY dates separated by commas. Public holiday pay overrides weekend loading for those hours.</small>
+              </label>
+              <label>
+                <span>Public holiday rate</span>
+                <input id="public-holiday-rate" inputmode="decimal" value="2.5x" />
+              </label>
+              <label>
+                <span>Public holiday region</span>
+                <select id="public-holiday-jurisdiction">
+                  <option value="tasmania">Tasmania/common Australian holidays</option>
+                  <option value="australia">Australia common holidays only</option>
+                  <option value="manual">Manual only</option>
+                </select>
+                <small>Manual dates still override every option.</small>
+              </label>
+              <label>
+                <span>First pay-cycle start date</span>
+                <input id="pay-cycle-start" type="date" value="2026-06-01" />
+                <small>Choose the first day of one known pay fortnight. RosterBuddy will calculate every future fortnight from this date; Weekly and Fortnightly views use the same saved cycle anchor.</small>
+              </label>
+            </section>
+
+            <section class="rule-group">
+              <div class="rule-group-heading">
+                <strong>Overtime and deductions</strong>
+                <span>Used for rough take-home estimates.</span>
+              </div>
+              <div class="two-col">
+                <label>
+                  <span>Overtime after</span>
+                  <input id="overtime-after" value="76 hours per fortnight" />
+                </label>
+                <label>
+                  <span>Overtime rate</span>
+                  <input id="overtime-rate" inputmode="decimal" value="1.50x" />
+                </label>
+              </div>
+              <label>
+                <span>Default unpaid break</span>
+                <input id="default-break" value="30 min" />
+              </label>
+              <div class="two-col">
+                <label>
+                  <span>Tax estimate method</span>
+                  <select id="tax-method">
+                    <option value="payg">PAYG estimate</option>
+                    <option value="percentage">Simple percentage</option>
+                    <option value="manual">Manual payslip amount</option>
+                  </select>
+                  <small>PAYG is an estimate; manual amount is best for matching one payslip exactly.</small>
+                </label>
+                <label>
+                  <span>Percentage estimate</span>
+                  <input id="tax-rate" inputmode="decimal" value="22%" />
+                  <small>Used only when Simple percentage is selected.</small>
+                </label>
+              </div>
+              <div class="two-col">
+                <label>
+                  <span>Manual PAYG amount</span>
+                  <input id="payg-tax-override" inputmode="decimal" value="$0" />
+                  <small>Used only when Manual payslip amount is selected.</small>
+                </label>
+                <label class="checkbox-card">
+                  <input id="tax-free-threshold" type="checkbox" checked />
+                  <span>Claim tax-free threshold</span>
+                </label>
+              </div>
+              <label>
+                <span>Salary packaging per pay</span>
+                <input id="salary-sacrifice" inputmode="decimal" value="$0" />
+              </label>
+              <label>
+                <span>Meals &amp; Entertainment per pay</span>
+                <input id="meals-entertainment-sacrifice" inputmode="decimal" value="$0" />
+                <small>Tracks M&amp;E separately from ordinary salary packaging so the bank deposit and salary sacrifice value are clearer.</small>
+              </label>
+              <label>
+                <span>Additional tax per pay</span>
+                <input id="extra-tax" inputmode="decimal" value="$0" />
+                <small>Optional extra withholding, for example HECS/HELP or a voluntary tax buffer.</small>
+              </label>
+              <a class="info-link" href="https://www.ato.gov.au/individuals-and-families/jobs-and-employment-types/working-as-an-employee" target="_blank" rel="noopener noreferrer">Check employee tax information with the ATO</a>
+            </section>
+          </form>
+
+          <button class="primary-button full" id="save-pay-rules" type="button">Save and update estimate</button>
+        </section>
+
+        <section class="app-screen hidden" id="screen-recovery">
+          <div class="app-topbar">
+            <div>
+              <p class="eyebrow">Recovery</p>
+              <h1>Roster strain</h1>
+            </div>
+            <button class="icon-button" type="button" data-open="calendar" aria-label="Calendar">
+              <span class="icon-calendar"></span>
+            </button>
+          </div>
+
+          <section class="fatigue-score strain-meter">
+            <div class="ring" id="recovery-ring" aria-hidden="true"><span id="recovery-score">0</span></div>
+            <div>
+              <p class="eyebrow" id="recovery-risk">No roster data</p>
+              <h2 id="recovery-title">Add shifts to see roster strain</h2>
+              <p id="recovery-summary">Recovery insights will update from the calendar.</p>
+            </div>
+          </section>
+
+
+          <section class="insight-list" id="recovery-insights">
+            <article>
+              <strong>No calendar data yet</strong>
+              <span>Add shifts to the calendar and this page will calculate nights, short turnarounds, weekend load, and recovery blocks.</span>
+            </article>
+          </section>
+
+          <section class="mental-health-card">
+            <p class="eyebrow">Mental Health</p>
+            <h2>Beyond Blue</h2>
+            <p>For mental health support, contact Beyond Blue on <strong>1300 22 4636</strong> or visit their website.</p>
+            <a href="https://www.beyondblue.org.au/get-support" target="_blank" rel="noreferrer">Open Beyond Blue support</a>
+            <a href="https://www.healthdirect.gov.au/mental-health-helplines" target="_blank" rel="noreferrer">Healthdirect Australia mental health helplines</a>
+          </section>
+
+          <section class="recovery-toolkit">
+            <h2>Recovery toolkit</h2>
+            <article>
+              <strong>Sleep anchor</strong>
+              <span>Aim for one protected main sleep block after nights, plus a short pre-shift nap when the next shift is close.</span>
+              <a href="https://www.safeworkaustralia.gov.au/safety-topic/hazards/fatigue" target="_blank" rel="noreferrer">Safe Work Australia fatigue guidance</a>
+            </article>
+            <article>
+              <strong>Light and caffeine timing</strong>
+              <span>Use bright light early in a night shift, then cut caffeine several hours before sleep and keep the trip home dim where practical.</span>
+              <a href="https://www.healthdirect.gov.au/work-life-balance" target="_blank" rel="noreferrer">Healthdirect work-life balance</a>
+            </article>
+            <article>
+              <strong>Active recovery</strong>
+              <span>On heavy fatigue days, pick gentle movement, hydration, regular food, and a low-demand reset instead of hard training.</span>
+              <a href="https://www.comcare.gov.au/safe-healthy-work/prevent-harm/psychosocial-hazards/fatigue" target="_blank" rel="noreferrer">Comcare fatigue guidance</a>
+            </article>
+            <article>
+              <strong>Burnout check</strong>
+              <span>Watch for emotional exhaustion, cynicism, poor concentration, irritability, and feeling ineffective. If it persists, escalate early.</span>
+              <a href="https://www.healthdirect.gov.au/work-related-stress" target="_blank" rel="noreferrer">Healthdirect work-related stress</a>
+            </article>
+            <article>
+              <strong>Ask for backup</strong>
+              <span>If fatigue affects driving, medication handling, patient care, machinery, or judgement, treat it as a safety issue. Speak to a trusted colleague, manager, or your EAP early.</span>
+              <a href="https://www.healthdirect.gov.au/wellbeing-at-work" target="_blank" rel="noreferrer">Healthdirect wellbeing at work</a>
+            </article>
+          </section>
+
+        </section>
+
+        <section class="app-screen hidden" id="screen-share">
+          <div class="app-topbar">
+            <div>
+              <p class="eyebrow">Sharing</p>
+              <h1>Sharing</h1>
+            </div>
+            <button class="icon-button" type="button" data-open="calendar" aria-label="Calendar"><span class="icon-calendar"></span></button>
+          </div>
+
+          <section class="theme-card sharing-card" aria-labelledby="sharing-title">
+            <p class="eyebrow">Sharing</p>
+            <h2 id="sharing-title">Share rosters with your people</h2>
+            <p class="muted">Create a group, invite people, and keep shared schedules together. Your personal calendar stays separate.</p>
+            <div class="sharing-magic-link" aria-label="Optional sharing connection"><label><span>Optional sharing email</span><input id="sharing-magic-link-email" type="email" autocomplete="email" placeholder="you@example.com" /></label><button class="secondary-button" id="sharing-request-magic-link" type="button">Email me a sharing link</button><small id="sharing-magic-link-status" class="muted" aria-live="polite">Your rosters stay local unless you choose sharing.</small></div>
+            <section class="sharing-section" id="sharing-profile" aria-label="Your name in groups"><label><span>Name your group sees</span><input id="sharing-display-name" maxlength="60" autocomplete="nickname" placeholder="e.g. Sam" /></label><button class="secondary-button compact" id="sharing-save-display-name" type="button">Save name</button><small class="muted">Shown next to your shifts. Never your email address.</small></section>
+            <section id="sharing-group-hub" class="sharing-section" aria-labelledby="sharing-groups-title">
+              <div class="sharing-section-heading"><div><p class="eyebrow">Your groups</p><strong id="sharing-groups-title">Groups</strong></div><span id="sharing-group-status" class="muted">No group yet</span></div>
+              <p id="sharing-hub-state" class="notice" role="status" aria-live="polite">Loading your groups…</p>
+              <button class="secondary-button compact hidden-control" id="sharing-hub-retry" type="button">Try again</button>
+              <div id="sharing-group-list" class="settings-list" aria-label="Your groups"></div>
+              <button class="text-button hidden-control" id="sharing-new-group" type="button">Create another group</button>
+              <div id="sharing-no-group" class="sharing-empty-state"><p class="muted">Start a group to share a read-only roster with the people you choose.</p><div class="form-stack"><label><span>Group name</span><input id="group-name" placeholder="Our household" /></label><button class="primary-button" id="group-create" type="button">Create group</button></div></div>
+              <article id="sharing-selected-group" class="sharing-group-card hidden-control"><div><strong id="sharing-selected-group-name">Shared roster</strong><span id="sharing-selected-group-meta" class="muted">Ready to share</span></div><div class="two-col"><button class="primary-button" id="sharing-open-group" type="button">View shared roster</button><button class="secondary-button" id="sharing-invite-people" type="button">Invite people</button></div></article>
+            </section>
+            <button class="secondary-button full" type="button" data-open="share-export">Send a summary</button>
+            <section id="sharing-group-detail" class="sharing-section hidden-control" aria-labelledby="sharing-detail-title">
+              <div class="sharing-detail-header"><button class="text-button" id="sharing-back-to-groups" type="button">← Your groups</button><span class="eyebrow">Group</span></div>
+              <h3 id="sharing-detail-title">Shared roster</h3>
+              <p id="sharing-detail-meta" class="muted"></p>
+              <ul id="sharing-permissions" class="muted sharing-permissions"></ul>
+              <div class="two-col"><button class="primary-button" id="sharing-view-group-calendar" type="button">View group calendar</button><button class="secondary-button" id="sharing-refresh-group" type="button">Refresh</button></div>
+              <div id="group-roster-preview" class="share-preview-card" aria-live="polite"></div>
+              <div class="theme-card sharing-section" id="sharing-people"><div class="sharing-section-heading"><div><p class="eyebrow">People</p><strong>People in this group</strong></div><span class="muted">Connected</span></div><div id="group-members" class="settings-list"></div></div>
+              <div class="theme-card sharing-section" id="sharing-invite"><div class="sharing-section-heading"><div><p class="eyebrow">Invite people</p><strong>Add someone to this group</strong></div><button class="text-button" id="sharing-invite-panel-toggle" type="button">Show invite options</button></div><div id="sharing-invite-panel" class="form-stack hidden-control"><label><span>Email</span><input id="group-invite-email" type="email" autocomplete="off" placeholder="person@example.com" /></label><label><span>Invite link or code</span><input id="group-invite-token" placeholder="Paste a fresh invite link or code" /></label><div class="two-col"><button class="secondary-button" id="group-invite" type="button">Create invite</button><button class="secondary-button" id="group-share-invite" type="button">Share invite</button><button class="primary-button" id="group-accept" type="button">Connect</button></div></div><p id="group-invite-output" class="muted" aria-live="polite"></p></div>
+              <div class="theme-card sharing-section" id="sharing-what-i-share"><p class="eyebrow">What I share</p><label class="toggle-row"><input id="group-sync-consent" type="checkbox" /><span>I consent to share my allowlisted schedule with this group.</span></label><button class="secondary-button" id="group-enable-sync" type="button">Save sharing permission</button><small id="group-sync-status">Cloud sync is controlled in Settings.</small><label class="toggle-row"><input id="sharing-reciprocal-consent" type="checkbox" /><span>I consent to share my allowlisted schedule with a connected person after they accept.</span></label><button class="secondary-button" id="sharing-reciprocal-enable" type="button">Request schedule sharing</button><small>Sharing starts only after the connected person accepts. Nothing is shared with them before then.</small></div>
+              <p id="group-session-status" class="notice" role="status">Checking sharing session…</p>
+            </section>
+          </section>
+
+          <section class="share-picker" aria-label="Share range options">
+            <p class="eyebrow">Range</p>
+            <div class="share-range-options" role="group" aria-label="Share range">
+              <button type="button" data-share-range="month">Month</button>
+              <button class="active" type="button" data-share-range="pay-cycle">Pay cycle</button>
+              <button type="button" data-share-range="week">Week</button>
+            </div>
+            <label class="share-week-picker hidden-control" for="share-week-select">
+              <span>Choose week</span>
+              <select id="share-week-select"></select>
+            </label>
+          </section>
+
+          <section class="share-options hidden-control" aria-hidden="true">
+            <input id="share-include-times" type="checkbox" checked />
+            <input id="share-include-notes" type="checkbox" />
+            <input id="share-include-pay" type="checkbox" />
+            <input id="share-include-recovery" type="checkbox" />
+            <input id="share-include-off-days" type="checkbox" checked />
+          </section>
+
+          <section class="share-preview">
+            <div class="share-month">
+              <strong id="share-preview-month">Pay cycle</strong>
+              <span id="share-preview-range">RosterBuddy share preview</span>
+            </div>
+            <article id="share-preview-card" class="share-preview-card" aria-label="Share text preview"></article>
+            <p class="share-privacy" id="share-privacy">Shares shift dates, codes and times only — no pay, notes or recovery details. RosterBuddy uploads nothing; you choose where it goes.</p>
+          </section>
+
+          <section class="share-actions">
+            <button id="native-share-roster" class="primary-button" type="button">Share</button>
+            <button id="copy-share-text" class="secondary-button" type="button">Copy</button>
+          </section>
+          <details class="calendar-export-note share-calendar-export">
+            <summary>Add to a calendar app</summary>
+            <p class="muted">Creates a local .ics file. No Google sign-in or cloud sync.</p>
+            <div class="share-calendar-actions">
+              <button id="export-google-calendar" class="secondary-button" type="button">Google Calendar</button>
+              <button id="export-phone-calendar" class="secondary-button" type="button">Phone calendar</button>
+            </div>
+          </details>
+        </section>
+
+        <section class="app-screen hidden" id="screen-share-export">
+        <div class="app-topbar">
+          <div>
+            <p class="eyebrow">Sharing</p>
+            <h1>Roster summary</h1>
+          </div>
+          <button class="icon-button" type="button" data-open="share" aria-label="Back to Sharing"><span class="icon-arrow-left"></span></button>
+        </div>
+        <section class="notice">
+          <strong>Send a roster summary</strong>
+          <span>Choose a range, review the text, then share it through Messages or another app. This does not change live roster access.</span>
+        </section>
+        <div id="share-export-content"></div>
+        </section>
+
+        <section class="app-screen hidden" id="screen-scan-roster">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
+            <div><p class="eyebrow">Scan roster beta</p><h1>Import shifts from a roster</h1></div>
+          </div>
+          <section class="notice beta-policy-card scan-beta-card">
+            <strong>Guided scan keeps imports accuracy-first.</strong>
+            <span>Choose a screenshot/photo, confirm the date row, then your row, then any extra ambiguous rows, then review the exact shifts before importing. Nothing is guessed or imported automatically.</span>
+          </section>
+          <section class="theme-card scan-locked-card hidden-control" id="scan-roster-locked-card">
+            <p class="eyebrow">Premium feature</p>
+            <h2>Smart Scanner is a Premium feature</h2>
+            <p>Manual shift entry remains free. Unlock RosterBuddy Premium to import shifts from a photographed or screenshotted roster.</p>
+            <div class="two-col">
+              <button class="secondary-button" type="button" data-open="premium">View Premium options</button>
+            </div>
+          </section>
+          <div class="hidden-control" id="scan-roster-gated-content">
+            <section class="theme-card scan-identity-card">
+              <p class="eyebrow">Roster format</p>
+              <h2>How is your roster laid out?</h2>
+              <div class="form-stack">
+                <label class="scan-format-option">
+                  <input type="radio" name="scan-roster-format" id="scan-roster-format-team" value="team" checked />
+                  <span>Team roster — find my name in a staff roster</span>
+                </label>
+                <label class="scan-format-option">
+                  <input type="radio" name="scan-roster-format" id="scan-roster-format-personal" value="personal" />
+                  <span>Personal electronic grid — only my shifts are shown</span>
+                </label>
+              </div>
+            </section>
+            <section class="theme-card scan-identity-card" id="scan-roster-identity-section">
+              <p class="eyebrow">My roster identity</p>
+              <h2>Name to find on large rosters</h2>
+              <div class="form-stack">
+                <label>
+                  <span>Roster name to scan for</span>
+                  <input id="scan-roster-name" autocomplete="name" placeholder="Jordan Smith" />
+                </label>
+                <label>
+                  <span>Also recognise</span>
+                  <input id="scan-roster-aliases" placeholder="A Smith, Smith Alex, A. Smith" />
+                  <small>Separate aliases with commas. Use the exact way your workplace roster shows your name.</small>
+                </label>
+              </div>
+            </section>
+            <section class="theme-card scan-input-card">
+              <p class="eyebrow">Guided scan</p>
+              <h2>Choose roster screenshot</h2>
+              <div class="scan-action-grid scan-action-grid-primary">
+                <button class="backup-action-button scan-file-button" id="scan-roster-photo-picker" type="button">Choose screenshot/photo</button>
+                <input class="hidden-control" id="scan-roster-image" type="file" accept="image/*" />
+              </div>
+              <div class="scan-processing hidden-control" id="scan-roster-processing" aria-live="polite">
+                <span class="scan-processing-spinner" aria-hidden="true"></span>
+                <strong>Reading roster locally…</strong>
+              </div>
+              <small id="scan-roster-photo-status">Photo OCR runs on-device in the Android app. Images are read on this device where available. Confirm the date row, then your row, then any extra ambiguous rows, before anything reaches Review.</small>
+              <details class="scan-diagnostics-toggle">
+                <summary>Advanced: self-test & diagnostics</summary>
+                <div class="scan-action-grid">
+                  <button class="secondary-button" type="button" id="scan-roster-self-test">Run OCR self-test</button>
+                  <button class="secondary-button" type="button" id="scan-roster-open-diagnostics">Diagnostics</button>
+                </div>
+                <pre class="scan-debug-log" id="scan-roster-debug-log" aria-live="polite">OCR diagnostics will appear here after you choose a photo.</pre>
+              </details>
+            </section>
+            <section class="theme-card guided-scan-card">
+              <p class="eyebrow">Step 1</p>
+              <h2>Confirm the date row</h2>
+              <div class="guided-scan-list" id="guided-scan-date-list" aria-live="polite"></div>
+            </section>
+            <section class="theme-card guided-scan-card">
+              <p class="eyebrow">Step 2</p>
+              <h2 id="guided-scan-row-heading">Confirm your row</h2>
+              <div class="guided-scan-list" id="guided-scan-row-list" aria-live="polite"></div>
+            </section>
+            <section class="theme-card guided-scan-card">
+              <p class="eyebrow">Step 3</p>
+              <h2>Confirm any extra ambiguous rows</h2>
+              <small>An extra unlabelled row printed directly under your row could be your own overflow, or it could belong to another staff member whose name wasn't read. Check the cropped photo for each one before its codes can be reviewed or imported.</small>
+              <div class="guided-scan-list" id="guided-scan-continuation-list" aria-live="polite"></div>
+            </section>
+            <section class="theme-card scan-review-card">
+              <p class="eyebrow">Review before import</p>
+              <h2 id="scan-review-title">No scan results yet</h2>
+              <div class="scan-import-summary hidden-control" id="scan-import-summary" aria-live="polite"></div>
+              <div class="scan-review-list" id="scan-review-list"></div>
+              <section class="notice scan-ai-card">
+                <strong>AI Assist (optional, offline second opinion)</strong>
+                <span>Runs entirely on this device and never contacts a network. It re-checks the same OCR text for missed shifts, conflicting codes, and wrong-person risk, then adds its findings to Review above — nothing is ever imported automatically. This is separate from the cloud AI Roster Assist feature under Premium, which is not enabled in this build.</span>
+                <button class="secondary-button" type="button" id="scan-roster-ai-assist" disabled>Check with AI</button>
+                <p class="muted" id="scan-ai-summary">Not run yet. AI Assist is optional and never imports anything on its own.</p>
+                <ul class="scan-ai-warnings hidden-control" id="scan-ai-warnings"></ul>
+                <small id="scan-ai-diagnostics"></small>
+              </section>
+              <section class="notice scan-cloud-ai-card">
+                <strong>Private cloud roster check</strong>
+                <span>Optional and separate from offline AI Assist. RosterBuddy prepares a masked image containing only the confirmed date grid and locally confirmed code rows. You must review that exact image before anything can be sent, and nothing imports automatically.</span>
+                <button class="secondary-button" type="button" id="scan-roster-cloud-check" disabled>Review masked image</button>
+                <p class="muted" id="scan-cloud-status">Private cloud checking is not configured in this build.</p>
+              </section>
+              <div class="two-col">
+                <button class="secondary-button" type="button" id="scan-roster-clear">Clear results</button>
+                <button class="primary-button" type="button" id="scan-roster-import">Import shifts</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="app-screen hidden scan-diagnostics-screen" id="screen-scan-diagnostics">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
+            <div><p class="eyebrow">OCR diagnostics</p><h1>Scan summary</h1></div>
+          </div>
+          <section class="notice beta-policy-card">
+            <strong>Screenshot this compact summary after a roster photo test.</strong>
+            <span>This view keeps the useful OCR result short. Use Copy diagnostics when we need the full privacy-filtered event log.</span>
+          </section>
+          <section class="theme-card scan-diagnostics-card">
+            <div class="two-col">
+              <button class="secondary-button" type="button" data-open="scan-roster">Back to scan</button>
+              <button class="secondary-button" type="button" id="copy-scan-diagnostics">Copy diagnostics</button>
+            </div>
+            <pre class="scan-diagnostics-full" id="scan-diagnostics-full" aria-live="polite">Run a photo scan, then open Diagnostics.</pre>
+          </section>
+        </section>
+
+        <section class="app-screen hidden" id="screen-settings">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back">
+              <span class="icon-back"></span>
+            </button>
+            <div>
+              <p class="eyebrow">Settings</p>
+              <h1>App setup</h1>
+            </div>
+          </div>
+
+          <section class="theme-card" id="account-settings-card">
+            <p class="eyebrow">Account</p>
+            <h2 id="account-settings-status">Local device</h2>
+            <p class="muted">RosterBuddy starts locally on this device. You can sign in by email later to share rosters with people you choose.</p>
+          </section>
+
+          <section class="settings-list">
+            <p class="eyebrow settings-section-label">Cloud sync</p>
+            <button type="button" id="settings-cloud-sync-control">
+              <span><strong>Sync across devices</strong><small id="settings-cloud-sync-description">Choose whether roster data may sync.</small></span>
+              <strong id="settings-cloud-sync-status">Choose</strong>
+            </button>
+          </section>
+
+          <section class="settings-list">
+            <p class="eyebrow settings-section-label">Roster setup</p>
+            <button type="button" data-open="templates">
+              <span>Shift types, icons & pay hours</span>
+              <strong>Edit</strong>
+            </button>
+            <button type="button" data-open="pay-rules">
+              <span>Pay rules</span>
+              <strong id="settings-pay-rate">$32/hr</strong>
+            </button>
+            <button type="button" id="recovery-alert-toggle">
+              <span>Recovery alerts</span>
+              <strong id="recovery-alert-status">On</strong>
+            </button>
+            <button id="calendar-export-setting" type="button">
+              <span>Calendar export</span>
+              <strong>Manual</strong>
+            </button>
+            <button id="refresh-widgets" type="button">
+              <span>Refresh widgets</span>
+              <strong>Sync</strong>
+            </button>
+            <button type="button" data-open="scan-roster">
+              <span>Scan roster beta</span>
+              <strong>Setup</strong>
+            </button>
+          </section>
+
+          <section class="settings-list">
+            <p class="eyebrow settings-section-label">Premium</p>
+            <button type="button" data-open="premium">
+              <span>RosterBuddy Premium</span>
+              <strong id="settings-premium-status">Free</strong>
+            </button>
+          </section>
+
+          <section class="settings-list">
+            <p class="eyebrow settings-section-label">Help & about</p>
+            <button type="button" data-open="onboarding">
+              <span>Replay setup guide</span>
+              <strong>Open</strong>
+            </button>
+            <button type="button" data-open="privacy">
+              <span>Privacy & storage</span>
+              <strong>Local</strong>
+            </button>
+            <button type="button" data-open="disclaimer">
+              <span>Estimate disclaimer</span>
+              <strong>Read</strong>
+            </button>
+            <button type="button" data-open="beta-checklist">
+              <span>Real-device beta checklist</span>
+              <strong>Test</strong>
+            </button>
+            <button type="button" data-open="about">
+              <span>About & support</span>
+              <strong>V0.2.1</strong>
+            </button>
+          </section>
+
+          <section class="theme-card">
+            <p class="eyebrow">Calendar</p>
+            <h2>Week starts on</h2>
+            <div class="theme-options week-options">
+              <button class="active" type="button" data-week-start="0">Sunday</button>
+              <button type="button" data-week-start="1">Monday</button>
+              <button type="button" data-week-start="6">Saturday</button>
+            </div>
+          </section>
+
+          <section class="theme-card">
+            <p class="eyebrow">Appearance</p>
+            <h2>Theme</h2>
+            <div class="theme-options">
+              <button class="active" type="button" data-theme="default">Teal</button>
+              <button type="button" data-theme="midnight">Midnight</button>
+            </div>
+          </section>
+
+          <section class="theme-card">
+            <p class="eyebrow">Data safety</p>
+            <h2>Backup & restore</h2>
+            <p id="backup-status">No backup imported/exported yet</p>
+            <div class="backup-actions">
+              <button class="backup-action-button" type="button" id="export-backup">Export backup JSON</button>
+              <button class="backup-action-button" type="button" id="share-backup">Share/save backup</button>
+              <button class="backup-action-button" type="button" id="copy-backup-json">Copy backup JSON</button>
+              <label class="backup-action-button" for="import-backup-file">Import backup JSON</label>
+            </div>
+            <input class="hidden-control" id="import-backup-file" type="file" accept="application/json,.json" />
+            <small>Backups include rosters, shift types, pay rules, reminders, notes, casual/on-call markers, scan roster identity, and settings. After exporting, confirm the file exists in Downloads/RosterBuddy before uninstalling, changing phones, or clearing app data. If file saving looks odd, use Share/save backup or Copy backup JSON.</small>
+          </section>
+
+          <section class="danger-zone">
+            <p class="eyebrow">Month tools</p>
+            <h2>Clear current month</h2>
+            <p>Deletes roster entries for the month you are viewing only.</p>
+            <button class="danger-button full" type="button" id="clear-month">Clear current month</button>
+          </section>
+
+
+          <section class="danger-zone reset-data-zone">
+            <p class="eyebrow">App data</p>
+            <h2>Reset app data</h2>
+            <p>Final safety stop: this deletes all local RosterBuddy data on this device. Export a backup first if you want to keep anything.</p>
+            <button class="danger-button full" type="button" id="reset-app-data">Reset app data</button>
+          </section>
+        </section>
+
+        <section class="app-screen hidden" id="screen-premium">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
+            <div><p class="eyebrow">Premium</p><h1>RosterBuddy Premium</h1></div>
+          </div>
+          <section class="notice beta-policy-card">
+            <strong>Manual shift entry is always free.</strong>
+            <span>RosterBuddy Premium adds Smart Scanner roster import and, in future, AI Roster Assist. Subscribe with Google Play or restore an active subscription.</span>
+          </section>
+          <section class="theme-card premium-status-card">
+            <p class="eyebrow">Your plan</p>
+            <h2 id="premium-status-heading">Free plan</h2>
+            <p id="premium-status-detail">Manual entry, calendar, pay estimates, recovery, backup/restore, and sharing are free and always available. Premium unlocks Smart Scanner.</p>
+            <div class="inline-actions">
+              <button class="primary-button" type="button" id="premium-purchase">Subscribe with Google Play</button>
+              <button class="secondary-button" type="button" id="premium-restore">Restore purchase</button>
+            </div>
+            <p class="muted" id="premium-billing-status">Google Play Billing will check your subscription status in the Play Store app build.</p>
+          </section>
+          <section class="theme-card premium-feature-list settings-list beta-checklist">
+            <p class="eyebrow">What Premium includes</p>
+            <article><strong>Smart Scanner</strong><span>Import shifts from a photographed or screenshotted roster, with review before import — nothing is imported automatically.</span></article>
+            <article><strong>AI Roster Assist</strong><span>AI Roster Assist is not enabled in this build. No roster data leaves your device.</span></article>
+          </section>
+          <section class="theme-card premium-ai-card">
+            <p class="eyebrow">Coming later</p>
+            <h2>AI Roster Assist</h2>
+            <p>AI Roster Assist is not enabled in this build. No roster data leaves your device.</p>
+            <button type="button" id="ai-assist-preview" disabled aria-disabled="true">AI Roster Assist — not enabled yet</button>
+          </section>
+        </section>
+
+        <section class="app-screen hidden" id="screen-privacy">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
+            <div><p class="eyebrow">Privacy</p><h1>Local-first privacy</h1></div>
+          </div>
+          <section class="notice beta-policy-card">
+            <strong>Your roster stays on this device.</strong>
+            <span>RosterBuddy does not provide automatic cloud sync until you choose it. You consent to optional cloud sync in Settings. The app uses private WebView storage for roster data and private Android storage as a widget mirror.</span>
+          </section>
+          <section class="settings-list beta-checklist">
+            <article><strong>Backups are files you control</strong><span>Exported JSON backups can contain rosters, notes, reminders, pay rules, and settings. Store them somewhere safe.</span></article>
+            <article><strong>Widgets mirror roster state</strong><span>Android widgets need a small local copy so they can display shifts outside the WebView.</span></article>
+            <article><strong>No cloud account yet</strong><span>Changing phones or reinstalling requires an exported backup JSON.</span></article>
+          </section>
+        </section>
+
+        <section class="app-screen hidden" id="screen-disclaimer">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
+            <div><p class="eyebrow">Disclaimer</p><h1>Estimate limits</h1></div>
+          </div>
+          <section class="notice beta-policy-card">
+            <strong>RosterBuddy is planning software.</strong>
+            <span>It is not payroll, tax, award, legal, medical, or fatigue advice. Always check payslips, workplace rules, awards/EBAs, and professional advice for decisions that matter.</span>
+          </section>
+          <section class="settings-list beta-checklist">
+            <article><strong>Pay is an estimate</strong><span>Rates, overtime, tax, salary sacrifice, and public holidays can vary by employer and agreement.</span></article>
+            <article><strong>Recovery is a heuristic</strong><span>Roster strain notes are practical prompts, not medical or fatigue-risk certification.</span></article>
+            <article><strong>Public beta expectation</strong><span>Report mistakes before relying on the app for money or safety decisions.</span></article>
+          </section>
+        </section>
+
+        <section class="app-screen hidden" id="screen-beta-checklist">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
+            <div><p class="eyebrow">Release candidate</p><h1>Real-device beta checklist</h1></div>
+          </div>
+          <section class="notice beta-policy-card">
+            <strong>Use this before sharing a beta APK.</strong>
+            <span>Tick these manually on a real Android device, not only in the browser.</span>
+          </section>
+          <section class="settings-list beta-checklist rc-checklist">
+            <article><strong>Fresh install</strong><span>Install the APK on a clean device/profile and complete onboarding.</span></article>
+            <article><strong>Update from V10.27</strong><span>Install over the previous RosterBuddy build and confirm data remains.</span></article>
+            <article><strong>Backup export/import</strong><span>Export JSON, reset or use a second install path, then import and verify rosters/pay rules.</span></article>
+            <article><strong>Widget refresh</strong><span>Add both widgets, open the app once, tap Refresh widgets, and confirm roster codes update.</span></article>
+            <article><strong>Calendar export</strong><span>Export shifts to the phone calendar and confirm timed events/overnight shifts are correct.</span></article>
+            <article><strong>Portrait/landscape</strong><span>Rotate through Calendar, Pay, Share, Settings, and confirm the selected tab survives.</span></article>
+            <article><strong>Offline reload</strong><span>Turn on airplane mode, relaunch, and confirm app shell/data still opens locally.</span></article>
+          </section>
+        </section>
+
+        <section class="app-screen hidden" id="screen-about">
+          <div class="app-topbar">
+            <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
+            <div><p class="eyebrow">About</p><h1>About RosterBuddy</h1></div>
+          </div>
+          <section class="notice beta-policy-card">
+            <strong>Version 0.2.1 — Build: RosterBuddy™ v0.2.1 Aesthetic Update.</strong>
+            <span>Package: com.donkeyworks.rosterbuddy. RosterBuddy™ is a local-first roster, pay-estimate, recovery-prompt, widget, and calendar-export prototype for shift workers.</span>
+          </section>
+          <section class="settings-list beta-checklist">
+            <article><strong>Beta support</strong><span>Export a backup before sending feedback. Include app version, Android version, what screen you were on, and what you expected to happen.</span></article>
+            <article><strong>Known beta limits</strong><span>This APK is for private testing. It is not a Play Store release and has no cloud account or automatic sync.</span></article>
+            <article><strong>Update identity</strong><span>Package: com.donkeyworks.rosterbuddy. This is the clean Play Console package for the new RosterBuddy listing and installs as a separate app from earlier private tester builds.</span></article>
+            <article><strong>If the app still looks old</strong><span>If you see an older version after installing, force close RosterBuddy and reopen it. If two RosterBuddy icons exist, open the one showing package com.donkeyworks.rosterbuddy in About for the new Play build.</span></article>
+            <article><strong>Safety reminder</strong><span>Check pay, public holidays, and recovery prompts against workplace rules before relying on them.</span></article>
+            <article><strong>Trade marks</strong><span>RosterBuddy™ and DonkeyWorks™ are trade marks of DonkeyWorks. © 2026 DonkeyWorks. All rights reserved.</span></article>
+          </section>
+        </section>
+
+        <nav class="tabbar" aria-label="Primary">
+          <button class="tab" type="button" data-open="calendar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>Calendar</span><i class="dot"></i>
+          </button>
+          <button class="tab" type="button" data-open="pay">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18M7 15h3"/></svg><span>Pay</span><i class="dot"></i>
+          </button>
+          <button class="tab" type="button" data-open="recovery">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>Recovery</span><i class="dot"></i>
+          </button>
+          <button class="tab" type="button" data-open="share">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 12v6a2 2 0 002 2h10a2 2 0 002-2v-6"/></svg><span>Share</span><i class="dot"></i>
+          </button>
+          <button class="tab" type="button" data-open="settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span>Settings</span><i class="dot"></i>
+          </button>
+        </nav>
+      </section>
+      <div id="app-toast" class="app-toast hidden" role="status" aria-live="polite"></div>
+      <div id="cloud-sync-consent-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="cloud-sync-consent-title">
+        <div class="app-modal-card">
+          <h2 id="cloud-sync-consent-title">Choose how RosterBuddy stores your data</h2>
+          <p id="cloud-sync-consent-copy">Cloud sync is optional. Your existing local data stays on this device until you choose.</p>
+          <div class="inline-actions"><button class="secondary-button" type="button" id="cloud-sync-local-only">Keep this device local</button><button class="primary-button" type="button" id="cloud-sync-enable">Turn on cloud sync</button></div>
+        </div>
       </div>
-    </section>
-    <footer>
-      &copy; DonkeyWorks. RosterBuddy package ID: com.donkeyworks.rosterbuddy.
-    </footer>
-  </main>
-</body>
+      <div id="cloud-ai-consent-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="cloud-ai-consent-title">
+        <div class="app-modal-card cloud-ai-consent-card">
+          <h2 id="cloud-ai-consent-title">Review the exact image before sending</h2>
+          <img id="cloud-ai-consent-image" alt="Exact masked roster image proposed for the private AI provider" />
+          <p>Only the confirmed date grid and locally confirmed code rows are in this image. The name column is masked. If you approve, this exact image will be sent to the private AI provider. Nothing imports automatically.</p>
+          <div class="two-col modal-actions">
+            <button class="secondary-button" type="button" id="cloud-ai-consent-cancel">Cancel</button>
+            <button class="primary-button" type="button" id="cloud-ai-consent-approve">Send this masked image</button>
+          </div>
+        </div>
+      </div>
+      <div id="app-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="app-modal-title">
+        <div class="app-modal-card">
+          <h2 id="app-modal-title">Confirm</h2>
+          <p id="app-modal-message"></p>
+          <label id="app-modal-input-wrap" class="hidden-control">
+            <span id="app-modal-input-label">Confirmation</span>
+            <input id="app-modal-input" />
+          </label>
+          <div class="two-col modal-actions">
+            <button class="secondary-button" type="button" id="app-modal-cancel">Cancel</button>
+            <button class="danger-button" type="button" id="app-modal-confirm">Confirm</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Optional ignored local config; absent means local/offline mode. -->
+    <script src="./supabase-config.local.js"></script>
+    <script src="./vendor/supabase.js"></script>
+    <script src="./supabase-client.js"></script>
+
+    <script src="./cloud-sync-consent.js"></script>
+    <script src="./legacy-magic-link.js"></script>
+    <script src="./shared-calendar-model.js"></script>
+    <script src="./app.js"></script>
+    <script src="./group-sharing.js"></script>
+    <script src="./group-sharing-backend.js"></script>
+    <script src="./invite-handoff.js"></script>
+    <script src="./group-sharing-ui.js"></script>
+  </body>
 </html>

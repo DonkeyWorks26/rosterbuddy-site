@@ -1,0 +1,26 @@
+{
+  "name": "RosterBuddy",
+  "short_name": "RosterBuddy",
+  "description": "Fast rosters, pay estimates, roster strain, casual markers and notes for shift workers.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f7f8",
+  "theme_color": "#153447",
+  "categories": ["productivity", "finance", "utilities"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
