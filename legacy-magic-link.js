@@ -32,13 +32,26 @@
   function redirectUrl() {
     return nativeAndroid() ? 'rosterbuddy://auth/callback' : 'https://donkeyworks26.github.io/rosterbuddy-site/auth-callback.html';
   }
+  // Client-side only. An expired access token with no refresh token cannot be
+  // renewed, so the session is treated as signed out. With a refresh token the
+  // identity stays and accessToken() renews the token on next use. Tokens with
+  // no readable exp (or no atob) are never guessed to be expired.
+  function sessionExpired() {
+    try {
+      if (!session || session.refresh_token) return false;
+      const part = String(session.access_token || '').split('.')[1];
+      if (!part || typeof root.atob !== 'function') return false;
+      const claims = JSON.parse(root.atob(part.replace(/-/g, '+').replace(/_/g, '/')));
+      return Number.isFinite(claims.exp) && claims.exp * 1000 <= Date.now();
+    } catch (_) { return false; }
+  }
   function identity() {
     const user = session && session.user;
-    if (!user || !user.id) return null;
+    if (!user || !user.id || sessionExpired()) return null;
     return { id: user.id, email: user.email || '', displayName: (user.user_metadata && (user.user_metadata.display_name || user.user_metadata.name)) || user.email || 'Cloud account' };
   }
   function status() {
-    return { authenticated: Boolean(identity()), offline: !configured(), gate: false, mode: identity() ? 'optional-sharing' : 'offline', reason: !configured() ? (errors[0] || 'not_configured') : (identity() ? 'authenticated' : 'signed_out') };
+    return { authenticated: Boolean(identity()), offline: !configured(), gate: false, mode: identity() ? 'optional-sharing' : 'offline', reason: !configured() ? (errors[0] || 'not_configured') : (identity() ? 'authenticated' : (session && sessionExpired() ? 'session_expired' : 'signed_out')) };
   }
   function notify() {
     if (typeof root.dispatchEvent !== 'function') return;

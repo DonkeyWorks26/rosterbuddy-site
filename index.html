@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#153447" />
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <title>RosterBuddy V0.2.1</title>
+    <title>RosterBuddy V0.2.2</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -752,7 +752,7 @@
             <p class="eyebrow">Sharing</p>
             <h2 id="sharing-title">Share rosters with your people</h2>
             <p class="muted">Create a group, invite people, and keep shared schedules together. Your personal calendar stays separate.</p>
-            <div class="sharing-magic-link" aria-label="Optional sharing connection"><label><span>Optional sharing email</span><input id="sharing-magic-link-email" type="email" autocomplete="email" placeholder="you@example.com" /></label><button class="secondary-button" id="sharing-request-magic-link" type="button">Email me a sharing link</button><small id="sharing-magic-link-status" class="muted" aria-live="polite">Your rosters stay local unless you choose sharing.</small></div>
+            <div class="sharing-account-note"><small id="sharing-account-note" class="muted">Sign-in lives in Settings &gt; Account. Your rosters stay on this device unless you choose sharing.</small><button class="secondary-button compact" id="sharing-open-account" type="button" data-open="settings">Open Account settings</button></div>
             <section class="sharing-section" id="sharing-profile" aria-label="Your name in groups"><label><span>Name your group sees</span><input id="sharing-display-name" maxlength="60" autocomplete="nickname" placeholder="e.g. Sam" /></label><button class="secondary-button compact" id="sharing-save-display-name" type="button">Save name</button><small class="muted">Shown next to your shifts. Never your email address.</small></section>
             <section id="sharing-group-hub" class="sharing-section" aria-labelledby="sharing-groups-title">
               <div class="sharing-section-heading"><div><p class="eyebrow">Your groups</p><strong id="sharing-groups-title">Groups</strong></div><span id="sharing-group-status" class="muted">No group yet</span></div>
@@ -980,7 +980,11 @@
           <section class="theme-card" id="account-settings-card">
             <p class="eyebrow">Account</p>
             <h2 id="account-settings-status">Local device</h2>
-            <p class="muted">RosterBuddy starts locally on this device. You can sign in by email later to share rosters with people you choose.</p>
+            <p class="muted" id="account-settings-body">RosterBuddy starts locally on this device. Signing in is optional and only needed for Sharing.</p>
+            <label><span>Email</span><input id="account-email" type="email" disabled autocomplete="email" placeholder="you@example.com" /></label>
+            <button class="secondary-button" id="account-request-link" type="button" disabled>Send sign-in link by email</button>
+            <button class="secondary-button hidden-control" id="account-sign-out" type="button">Sign out</button>
+            <small id="account-auth-message" class="muted" aria-live="polite"></small>
           </section>
 
           <section class="settings-list">
@@ -1047,7 +1051,7 @@
             </button>
             <button type="button" data-open="about">
               <span>About & support</span>
-              <strong>V0.2.1</strong>
+              <strong>V0.2.2</strong>
             </button>
           </section>
 
@@ -1190,7 +1194,7 @@
             <div><p class="eyebrow">About</p><h1>About RosterBuddy</h1></div>
           </div>
           <section class="notice beta-policy-card">
-            <strong>Version 0.2.1 — Build: RosterBuddy™ v0.2.1 Aesthetic Update.</strong>
+            <strong>Version 0.2.2 — Build: RosterBuddy™ v0.2.2 Aesthetic Update.</strong>
             <span>Package: com.donkeyworks.rosterbuddy. RosterBuddy™ is a local-first roster, pay-estimate, recovery-prompt, widget, and calendar-export prototype for shift workers.</span>
           </section>
           <section class="settings-list beta-checklist">
@@ -1263,6 +1267,7 @@
 
     <script src="./cloud-sync-consent.js"></script>
     <script src="./legacy-magic-link.js"></script>
+    <script src="./account-session-view.js"></script>
     <script src="./shared-calendar-model.js"></script>
     <script src="./app.js"></script>
     <script src="./group-sharing.js"></script>

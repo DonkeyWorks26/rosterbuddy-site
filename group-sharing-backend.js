@@ -116,6 +116,9 @@
 
   const CONSENT_STATES = Object.freeze(['pending', 'accepted', 'paused', 'declined', 'revoked']);
 
+  // The app-wide session (Settings > Account) is the only session. When an
+  // accessToken provider is passed the SDK uses it for REST and realtime and
+  // keeps no session of its own, so sharing calls are never sent anonymously.
   function createSupabaseClient(config, factory, options) {
     if (!config || config.configured !== true) throw new Error('backend-not-configured');
     if (typeof factory !== 'function') throw new Error('Supabase client factory required');
@@ -128,77 +131,72 @@
       if (!object || typeof object[name] !== 'function') throw new Error(`Supabase transport missing ${name}`);
       return object[name].bind(object);
     };
-    const auth = client.auth;
+    // client.auth is read lazily: with an accessToken provider the SDK throws on
+    // any auth access, and sharing never signs in through the SDK.
+    const auth = () => client.auth;
     const rpc = requireMethod(client, 'rpc');
     const channel = requireMethod(client, 'channel');
     return {
-      getSession: () => requireMethod(auth, 'getSession')(),
-      createAccount: (credentials) => requireMethod(auth, 'signUp')(credentials),
-      signIn: (credentials) => requireMethod(auth, 'signInWithPassword')(credentials),
-      signOut: () => requireMethod(auth, 'signOut')(),
-      // Keep RPC argument names aligned with the reviewed SQL signatures. The
-      // UI/adapter uses a stable app-facing shape; only this boundary knows
-      // Supabase's function parameter names.
-      createGroup: (input = {}) => rpc('create_household', { household_name: input.name }),
-      createInvite: (input = {}) => rpc('create_invitation', {
-        target_household: input.groupId,
-        target_email: input.email,
-        ttl_seconds: input.ttlMs == null ? undefined : Math.floor(Number(input.ttlMs) / 1000),
+      getSession: () => requireMethod(auth(), 'getSession')(),
+      createAccount: (credentials) => requireMethod(auth(), 'signUp')(credentials),
+      signIn: (credentials) => requireMethod(auth(), 'signInWithPassword')(credentials),
+      signOut: () => requireMethod(auth(), 'signOut')(),
+      // These names and parameter keys are the approved Sandbox contract.
+      // Do not add a client-side fallback RPC: an unknown function can expose
+      // private data or mutate a different schema.
+      bootstrapHousehold: (input = {}) => rpc('bootstrap_household', { p_name: input.name }),
+      createGroup: (input = {}) => rpc('create_group', {
+        p_name: input.name,
+        p_display_name: input.displayName || input.ownerDisplayName || 'RosterBuddy user',
       }),
-      revokeInvite: (input = {}) => rpc('revoke_invitation', { target_invitation: input.invitationId }),
-      acceptInvite: (input = {}) => rpc('accept_invitation', { raw_token: input.token }),
-      revokeMember: (input = {}) => rpc('revoke_membership', {
-        target_household: input.groupId,
-        target_user: input.memberId,
+      getGroupRoster: (input = {}) => rpc('get_group_roster', {
+        p_group_id: input.groupId,
+        p_from: input.from == null ? null : input.from,
+        p_to: input.to == null ? null : input.to,
       }),
-      updateRoster: (input = {}) => rpc('replace_shared_roster', {
-        target_household: input.groupId,
-        entries: input.entries || [],
+      listMyGroups: () => rpc('list_my_groups'),
+      listGroupInvitations: (input = {}) => rpc('list_group_invitations', { p_group_id: input.groupId }),
+      setGroupSharing: (input = {}) => rpc('set_group_sharing', {
+        p_household_id: input.groupId,
+        p_share_notes: input.shareNotes === true,
       }),
-      setSharingPreference: (input = {}) => rpc('set_sharing_preferences', {
-        target_household: input.groupId,
-        share_schedule: input.shareSchedule === true,
+      setMemberRestriction: (input = {}) => rpc('set_member_restriction', {
+        p_household_id: input.groupId,
+        p_viewer_id: input.memberId,
+        // The Sandbox RPC accepts false to apply the notes restriction and
+        // null to remove it; true would incorrectly broaden access.
+        p_notes_override: input.restricted === true ? false : null,
       }),
-      requestReciprocalSharing: (input = {}) => rpc('request_member_sharing', {
-        target_household: input.groupId,
-        target_user: input.targetUserId,
-        source_consent: input.shareSchedule === true,
+      revokeMembership: (input = {}) => rpc('revoke_membership', {
+        p_household_id: input.groupId,
+        p_user_id: input.memberId,
       }),
-      acceptReciprocalSharing: (input = {}) => rpc('accept_member_sharing', { target_grant: input.grantId }),
-      declineReciprocalSharing: (input = {}) => rpc('decline_member_sharing', { target_grant: input.grantId }),
-      stopReciprocalSharing: (input = {}) => rpc('stop_member_sharing', { target_grant: input.grantId }),
-      updateReciprocalRoster: (input = {}) => rpc('replace_reciprocal_roster', {
-        target_grant: input.grantId,
-        entries: input.entries || [],
+      leaveGroup: (input = {}) => rpc('leave_group', { p_group_id: input.groupId }),
+      // These Sandbox checks always evaluate auth.uid(); never send a caller-
+      // supplied user id that could create an authorization ambiguity.
+      isActiveMember: (input = {}) => rpc('is_active_member', { p_group: input.groupId }),
+      isGroupOwner: (input = {}) => rpc('is_group_owner', { p_group: input.groupId }),
+      createGroupInvitation: (input = {}) => rpc('create_group_invitation', {
+        p_group_id: input.groupId,
+        p_email: input.email,
+        p_ttl_seconds: input.ttlSeconds == null ? 604800 : input.ttlSeconds,
       }),
-      readReciprocalRoster: (input = {}) => rpc('read_reciprocal_roster', {
-        target_household: input.groupId,
-        source_user: input.sourceUserId || null,
+      acceptGroupInvitation: (input = {}) => rpc('accept_group_invitation', { p_token: input.token }),
+      revokeGroupInvitation: (input = {}) => rpc('revoke_group_invitation', { p_invitation_id: input.invitationId }),
+      replaceGroupRoster: (input = {}) => rpc('replace_group_roster', {
+        p_group_id: input.groupId,
+        p_entries: Array.isArray(input.entries) ? input.entries : [],
       }),
-      pauseReciprocalSharing: (input = {}) => rpc('pause_member_sharing', { target_grant: input.grantId }),
-      resumeReciprocalSharing: (input = {}) => rpc('resume_member_sharing', { target_grant: input.grantId }),
-      readGroupSchedule: (input = {}) => rpc('read_group_schedule', { target_household: input.groupId }),
-      listGroupPeople: (input = {}) => rpc('list_group_people', { target_household: input.groupId }),
-      listGroupSummaries: () => rpc('list_group_summaries'),
-      listMySharing: (input = {}) => rpc('list_my_member_sharing', { target_household: input.groupId }),
-      setDisplayName: (input = {}) => rpc('set_my_display_name', { new_name: input.displayName }),
-      readSharedRoster: (input = {}) => rpc('read_shared_roster', { target_household: input.groupId }),
-      listMembers: (input = {}) => rpc('list_household_members', { target_household: input.groupId }),
-      listPendingReciprocalRequests: (input = {}) => rpc('list_pending_member_sharing', { target_household: input.groupId }),
-      listOwnedHouseholds: () => rpc('list_owned_households'),
-      listAccessibleHouseholds: () => rpc('list_accessible_households'),
-      subscribeGroup: (groupId, accountId, onChange) => {
-        if (typeof onChange !== 'function') throw new Error('realtime listener required');
-        const realtime = channel(`shared-roster:${groupId}`);
-        const filter = { event: '*', schema: 'public', table: 'shared_roster_entries', filter: `household_id=eq.${groupId}` };
-        const subscribed = realtime.on('postgres_changes', filter, onChange);
-        if (!subscribed || typeof subscribed.subscribe !== 'function') throw new Error('Supabase realtime channel cannot subscribe');
-        subscribed.subscribe();
-        let active = true;
+      subscribeGroup: (input = {}, listener) => {
+        const realtime = channel(`group-roster:${input.groupId}`);
+        const configured = realtime.on('postgres_changes', {
+          event: '*', schema: 'public', table: 'group_member_shifts',
+          filter: `household_id=eq.${input.groupId}`,
+        }, listener);
+        const subscription = configured && typeof configured.subscribe === 'function' ? configured.subscribe() : configured;
         return () => {
-          if (!active) return;
-          active = false;
-          if (typeof subscribed.unsubscribe === 'function') subscribed.unsubscribe();
+          if (realtime && typeof realtime.unsubscribe === 'function') realtime.unsubscribe();
+          return subscription;
         };
       },
     };
@@ -239,81 +237,41 @@
         return { id: String(groupId), name: String(input.name || 'Household').trim() || 'Household', ownerId,
           roster: {}, templates: {}, members: ownerId ? { [ownerId]: { role: 'owner', revokedAt: null } } : {} };
       }
-      if (name === 'createInvite') {
-        // Supabase RPCs can return a row, one-row array, or wrapped object.
-        const row = Array.isArray(data) ? data[0] : data && (data.create_invitation || data.invitation || data.row || data);
-        const rawToken = row && (row.raw_token || row.rawToken || row.token);
-        if (!row || !rawToken) throw new Error('cloud invitation returned no token');
-        return { token: rawToken, invitationId: row.invitation_id || row.invitationId || row.id,
-          expiresAt: row.expires_at || row.expiresAt, link: `rosterbuddy://invite/${encodeURIComponent(rawToken)}` };
-      }
-      if (name === 'acceptInvite') {
-        const groupId = Array.isArray(data) ? data[0] : data;
-        return { groupId: String(groupId && typeof groupId === 'object' ? (groupId.id || groupId.household_id) : groupId) };
-      }
-      if (name === 'requestReciprocalSharing') {
-        const row = Array.isArray(data) ? data[0] : data;
-        return { grantId: row && (row.grant_id || row.grantId), status: row && row.status };
-      }
-      if (name === 'readReciprocalRoster') return (Array.isArray(data) ? data : []).map((row) => ({
-        grantId: row.grant_id || row.grantId, sourceUserId: row.source_user_id || row.sourceUserId,
-        date: row.date || row.roster_date, shiftCode: row.shiftCode || row.shift_code, label: row.label,
-        start: row.start || row.start_time || '', finish: row.finish || row.finish_time || '',
-      }));
-      if (name === 'readGroupSchedule') return (Array.isArray(data) ? data : []).map((row) => ({
-        // Allowlist: nothing beyond schedule fields and a safe label crosses this line.
-        sourceUserId: row.source_user_id || row.sourceUserId,
-        displayName: String(row.display_name || row.displayName || 'Connected person').slice(0, 60),
-        date: row.date || row.roster_date, shiftCode: row.shiftCode || row.shift_code, label: row.label,
-        start: row.start || row.start_time || '', finish: row.finish || row.finish_time || '',
-        version: Number(row.version) || 0,
-      }));
-      if (name === 'listGroupPeople') return (Array.isArray(data) ? data : []).map((row) => ({
+      if (name === 'getGroupRoster') return (Array.isArray(data) ? data : []).map((row) => ({
         userId: row.user_id || row.userId,
-        displayName: String(row.display_name || row.displayName || 'Connected person').slice(0, 60),
-        role: row.role, isYou: row.is_you === true || row.isYou === true,
+        displayName: String(row.display_name || row.displayName || 'Group member').slice(0, 60),
+        date: row.date_key || row.dateKey,
+        shiftCode: row.code == null ? '' : String(row.code).slice(0, 16),
       }));
-      if (name === 'listGroupSummaries') return (Array.isArray(data) ? data : []).map((row) => ({
-        id: String(row.household_id || row.householdId || row.id || ''),
-        name: String(row.household_name || row.householdName || row.name || 'Group'),
+      if (name === 'listMyGroups') return (Array.isArray(data) ? data : []).map((row) => ({
+        id: String(row.group_id || row.groupId || ''),
+        name: String(row.name || 'Group'),
         role: row.role === 'owner' ? 'owner' : 'member',
+        displayName: String(row.display_name || row.displayName || 'Group member').slice(0, 60),
         memberCount: Number(row.member_count != null ? row.member_count : row.memberCount) || 0,
-        sharedWithMeCount: Number(row.shared_with_me_count != null ? row.shared_with_me_count : row.sharedWithMeCount) || 0,
-        pendingRequestCount: Number(row.pending_request_count != null ? row.pending_request_count : row.pendingRequestCount) || 0,
-        createdAt: row.created_at || row.createdAt || null,
       })).filter((row) => row.id && !/^group_/i.test(row.id));
-      if (name === 'listMySharing') return (Array.isArray(data) ? data : []).map((row) => ({
-        grantId: row.grant_id || row.grantId,
-        direction: row.direction === 'outgoing' ? 'outgoing' : 'incoming',
-        counterpartUserId: row.counterpart_user_id || row.counterpartUserId,
-        counterpartDisplayName: String(row.counterpart_display_name || row.counterpartDisplayName || 'Connected person').slice(0, 60),
-        status: CONSENT_STATES.includes(row.status) ? row.status : 'revoked',
-        updatedAt: row.updated_at || row.updatedAt || null,
-      }));
-      if (name === 'readSharedRoster') return (Array.isArray(data) ? data : []).map((row) => ({
-        date: row.date || row.roster_date, shiftCode: row.shiftCode || row.shift_code, label: row.label,
-        start: row.start || row.start_time || '', finish: row.finish || row.finish_time || '',
-      }));
-      if (name === 'listMembers') return (Array.isArray(data) ? data : []).map((row) => ({
-        userId: row.user_id || row.userId,
-        displayName: row.display_name || row.displayName || 'Cloud member',
+      if (name === 'listGroupInvitations') return (Array.isArray(data) ? data : []).map((row) => ({
+        id: row.invitation_id || row.invitationId || row.id,
+        email: row.email,
         role: row.role,
+        acceptedAt: row.accepted_at || row.acceptedAt || null,
         revokedAt: row.revoked_at || row.revokedAt || null,
-        joinedAt: row.joined_at || row.joinedAt || null,
       }));
-      if (name === 'listPendingReciprocalRequests') return (Array.isArray(data) ? data : []).map((row) => ({
-        grantId: row.grant_id || row.grantId,
-        groupId: row.household_id || row.householdId,
-        sourceUserId: row.source_user_id || row.sourceUserId,
-        sourceDisplayName: row.source_display_name || row.sourceDisplayName || 'Connected person',
-        requestedAt: row.requested_at || row.requestedAt,
-      }));
-      if (name === 'listOwnedHouseholds' || name === 'listAccessibleHouseholds') return (Array.isArray(data) ? data : []).map((row) => ({
-        id: String(row.household_id || row.householdId || row.id || ''),
-        name: String(row.household_name || row.householdName || row.name || 'Household'),
-        owner: row.is_owner === true || row.isOwner === true || row.role === 'owner',
-      })).filter((row) => row.id && !/^group_/i.test(row.id));
+      if (name === 'createGroupInvitation') {
+        const row = Array.isArray(data) ? data[0] : data;
+        return row ? {
+          invitationId: row.invitation_id || row.invitationId,
+          token: row.token,
+          expiresAt: row.expires_at || row.expiresAt || null,
+        } : row;
+      }
+      if (name === 'acceptGroupInvitation') return data;
       return data;
+    }
+    function unsupported(name) {
+      const error = new Error(`cloud operation unsupported: ${name}`);
+      error.code = 'cloud-operation-unsupported';
+      return error;
     }
     function call(name, args, input) {
       if (cloudSelected()) {
@@ -375,92 +333,115 @@
         : localApi.signIn(localStore, email),
       signOut: () => cloudSelected() ? call('signOut', []) : localApi.signOut(localStore),
       createGroup: (input) => call('createGroup', [input], input),
-      createInvite: (groupId, actorId, options = {}) => call('createInvite', [{ groupId, actorId, email: options.email, ttlMs: options.ttlMs }], options),
-      revokeInvite: (invitationId) => call('revokeInvite', [{ invitationId }], { invitationId }),
-      acceptInvite: (token, email) => call('acceptInvite', [{ token, email }], { token, email }),
-      revokeMember: (groupId, actorId, memberId) => call('revokeMember', [{ groupId, actorId, memberId }], { groupId, actorId, memberId }),
+      bootstrapHousehold: (name) => {
+        if (!cloudSelected()) throw unsupported('bootstrapHousehold');
+        return call('bootstrapHousehold', [{ name }], { name });
+      },
+      createInvite: (groupId, actorId, options = {}) => {
+        if (cloudSelected()) return call('createGroupInvitation', [{ groupId, email: options.email, ttlSeconds: options.ttlMs == null ? undefined : Math.round(options.ttlMs / 1000) }], options);
+        return call('createInvite', [{ groupId, actorId, email: options.email, ttlMs: options.ttlMs }], options);
+      },
+      revokeInvite: (invitationId) => {
+        if (cloudSelected()) return call('revokeGroupInvitation', [{ invitationId }], { invitationId });
+        return call('revokeInvite', [{ invitationId }], { invitationId });
+      },
+      acceptInvite: (token, email) => {
+        if (cloudSelected()) return call('acceptGroupInvitation', [{ token }], { token, email });
+        return call('acceptInvite', [{ token, email }], { token, email });
+      },
+      revokeMember: (groupId, actorId, memberId) => call('revokeMembership', [{ groupId, actorId, memberId }], { groupId, actorId, memberId }),
+      leaveGroup: (groupId, actorId) => {
+        if (!cloudSelected()) throw unsupported('leaveGroup');
+        return call('leaveGroup', [{ groupId, actorId }], { groupId, actorId });
+      },
+      setMemberRestriction: (groupId, memberId, restricted) => {
+        if (!cloudSelected()) throw unsupported('setMemberRestriction');
+        return call('setMemberRestriction', [{ groupId, memberId, restricted }], { groupId, memberId, restricted });
+      },
       projectRoster: localApi.projectRoster,
-      readSharedRoster: (groupId, accountId) => call('readSharedRoster', [{ groupId, accountId }], { groupId, accountId }),
-      listMembers: (groupId, accountId) => call('listMembers', [{ groupId, accountId }], { groupId, accountId }),
-      listPendingReciprocalRequests: (groupId, accountId) => call('listPendingReciprocalRequests', [{ groupId, accountId }], { groupId, accountId }),
-      listOwnedHouseholds: () => call('listOwnedHouseholds', [], {}),
-      listAccessibleHouseholds: () => call('listAccessibleHouseholds', [], {}),
+      readSharedRoster: (groupId, accountId, range = {}) => {
+        if (!cloudSelected()) return call('readSharedRoster', [{ groupId, accountId }], { groupId, accountId });
+        return call('getGroupRoster', [{ groupId, from: range.from, to: range.to }], { groupId, from: range.from, to: range.to });
+      },
+      getGroupRoster: (groupId, from, to) => {
+        if (!cloudSelected()) throw unsupported('getGroupRoster');
+        return call('getGroupRoster', [{ groupId, from, to }], { groupId, from, to });
+      },
+      listGroupInvitations: (groupId) => {
+        if (!cloudSelected()) throw unsupported('listGroupInvitations');
+        return call('listGroupInvitations', [{ groupId }], { groupId });
+      },
+      listMembers: (groupId, accountId) => {
+        if (cloudSelected()) throw unsupported('listMembers');
+        return call('listMembers', [{ groupId, accountId }], { groupId, accountId });
+      },
+      listPendingReciprocalRequests: (groupId, accountId) => {
+        if (cloudSelected()) throw unsupported('listPendingReciprocalRequests');
+        return call('listPendingReciprocalRequests', [{ groupId, accountId }], { groupId, accountId });
+      },
+      listMyGroups: () => {
+        if (!cloudSelected()) throw unsupported('listMyGroups');
+        return call('listMyGroups', [], {});
+      },
+      listOwnedHouseholds: () => {
+        if (!cloudSelected()) throw unsupported('listOwnedHouseholds');
+        const result = call('listMyGroups', [], {});
+        return result && typeof result.then === 'function'
+          ? result.then((rows) => rows.filter((row) => row.role === 'owner'))
+          : result.filter((row) => row.role === 'owner');
+      },
+      listAccessibleHouseholds: () => {
+        if (!cloudSelected()) throw unsupported('listAccessibleHouseholds');
+        return call('listMyGroups', [], {});
+      },
       subscribeGroup: (groupId, accountId, listener) => {
-        const cleanup = call('subscribeGroup', [groupId, accountId, listener]);
+        if (!cloudSelected()) throw unsupported('subscribeGroup');
+        const cleanup = call('subscribeGroup', [{ groupId }, listener], { groupId });
         return trackSubscription(groupId, cleanup);
       },
-      updateRoster: (groupId, actorId, roster, templates) => call('updateRoster', [{ groupId, actorId, entries: localApi.projectRoster(roster, templates) }], { groupId, actorId }),
-      setSharingPreference: (groupId, actorId, shareSchedule) => call('setSharingPreference', [{ groupId, actorId, shareSchedule: shareSchedule === true }], { groupId, actorId, shareSchedule: shareSchedule === true }),
-      requestReciprocalSharing: (groupId, actorId, targetUserId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('requestReciprocalSharing', [{ groupId, actorId, targetUserId, shareSchedule: true }], { groupId, actorId, targetUserId });
+      updateRoster: (groupId, actorId, roster, templates) => {
+        if (!cloudSelected()) return false;
+        const entries = Array.isArray(roster) ? roster : localApi.projectRoster(roster || {}, templates || {}).map((row) => ({
+          date: row.date,
+          code: String(row.shiftCode || '').toUpperCase().slice(0, 4),
+        })).filter((row) => /^[A-Z0-9]{1,4}$/.test(row.code));
+        return call('replaceGroupRoster', [{ groupId, entries }], { groupId, entries });
       },
-      acceptReciprocalSharing: (grantId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('acceptReciprocalSharing', [{ grantId }], { grantId });
+      setGroupSharing: (groupId, shareNotes) => {
+        if (!cloudSelected()) throw unsupported('setGroupSharing');
+        return call('setGroupSharing', [{ groupId, shareNotes: shareNotes === true }], { groupId, shareNotes: shareNotes === true });
       },
-      declineReciprocalSharing: (grantId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('declineReciprocalSharing', [{ grantId }], { grantId });
+      // The legacy UI name represents schedule sharing, while Sandbox exposes
+      // only the explicitly named notes preference. Never silently translate it.
+      setSharingPreference: () => { throw unsupported('setSharingPreference'); },
+      requestReciprocalSharing: () => { throw unsupported('requestReciprocalSharing'); },
+      acceptReciprocalSharing: () => { throw unsupported('acceptReciprocalSharing'); },
+      declineReciprocalSharing: () => { throw unsupported('declineReciprocalSharing'); },
+      stopReciprocalSharing: () => { throw unsupported('stopReciprocalSharing'); },
+      updateReciprocalRoster: () => { throw unsupported('updateReciprocalRoster'); },
+      pauseReciprocalSharing: () => { throw unsupported('pauseReciprocalSharing'); },
+      resumeReciprocalSharing: () => { throw unsupported('resumeReciprocalSharing'); },
+      readGroupSchedule: () => { throw unsupported('readGroupSchedule'); },
+      getCachedGroupSchedule: () => [],
+      listGroupPeople: () => { throw unsupported('listGroupPeople'); },
+      listGroupSummaries: () => {
+        if (!cloudSelected()) throw unsupported('listGroupSummaries');
+        return call('listMyGroups', [], {});
       },
-      stopReciprocalSharing: (grantId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('stopReciprocalSharing', [{ grantId }], { grantId });
+      listMySharing: () => { throw unsupported('listMySharing'); },
+      syncOutgoingSchedules: async () => { throw unsupported('syncOutgoingSchedules'); },
+      setDisplayName: () => { throw unsupported('setDisplayName'); },
+      isActiveMember: (groupId, userId) => {
+        if (!cloudSelected()) throw unsupported('isActiveMember');
+        return call('isActiveMember', [{ groupId, userId }], { groupId, userId });
       },
-      updateReciprocalRoster: (grantId, entries) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('updateReciprocalRoster', [{ grantId, entries }], { grantId });
+      isGroupOwner: (groupId, userId) => {
+        if (!cloudSelected()) throw unsupported('isGroupOwner');
+        return call('isGroupOwner', [{ groupId, userId }], { groupId, userId });
       },
-      pauseReciprocalSharing: (grantId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('pauseReciprocalSharing', [{ grantId }], { grantId });
-      },
-      resumeReciprocalSharing: (grantId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('resumeReciprocalSharing', [{ grantId }], { grantId });
-      },
-      // Fail closed: any read error clears this group's cache first, so a revoked
-      // reader never keeps a stale combined projection.
-      readGroupSchedule: (groupId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        const clear = (error) => { cache.delete(`schedule:${groupId}`); throw error; };
-        try {
-          const result = call('readGroupSchedule', [{ groupId }], { groupId });
-          if (result && typeof result.then === 'function') {
-            return result.then((rows) => { cache.set(`schedule:${groupId}`, rows.slice()); return rows; }, clear);
-          }
-          cache.set(`schedule:${groupId}`, result.slice());
-          return result;
-        } catch (error) { return clear(error); }
-      },
-      getCachedGroupSchedule: (groupId) => (cache.get(`schedule:${groupId}`) || []).slice(),
-      listGroupPeople: (groupId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('listGroupPeople', [{ groupId }], { groupId });
-      },
-      listGroupSummaries: () => call('listGroupSummaries', [], {}),
-      listMySharing: (groupId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('listMySharing', [{ groupId }], { groupId });
-      },
-      // Uploads the allowlisted projection (date/code/label/start/finish) to every
-      // outgoing grant that is currently 'accepted'. Paused, pending, declined and
-      // revoked grants are skipped, so nothing is sent unless consent is active.
-      syncOutgoingSchedules: async (groupId, roster, templates) => {
-        if (!cloudSelected()) return { uploaded: 0, skipped: 0 };
-        const rows = await Promise.resolve(call('listMySharing', [{ groupId }], { groupId }));
-        const outgoing = rows.filter((row) => row.direction === 'outgoing');
-        const active = outgoing.filter((row) => row.status === 'accepted');
-        const entries = localApi.projectRoster(roster, templates);
-        for (const row of active) await Promise.resolve(call('updateReciprocalRoster', [{ grantId: row.grantId, entries }], { grantId: row.grantId }));
-        return { uploaded: active.length, skipped: outgoing.length - active.length };
-      },
-      setDisplayName: (displayName) => call('setDisplayName', [{ displayName }], { displayName }),
+      readReciprocalRoster: () => { throw unsupported('readReciprocalRoster'); },
       isRevocationError,
-      readReciprocalRoster: (groupId, sourceUserId) => {
-        if (!cloudSelected()) throw new Error('reciprocal cloud sharing is not enabled');
-        return call('readReciprocalRoster', [{ groupId, sourceUserId }], { groupId, sourceUserId });
-      },
+
     };
   }
 

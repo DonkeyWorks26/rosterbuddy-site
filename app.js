@@ -63,7 +63,7 @@ const TEMPLATE_OFF_TYPE_REPAIR_SCHEMA_VERSION = 2;
 // Version 3 merges back the built-in templates the old drifted key allowlist
 // had already deleted from installed state.
 const TEMPLATE_BUILT_IN_RESTORE_SCHEMA_VERSION = 3;
-const APP_VERSION = "0.2.1";
+const APP_VERSION = "0.2.2";
 const FIXED_CASUAL_LOADING = 0.25;
 const TEMPLATE_COLOURS = new Set(["aqua", "coral", "amber", "violet", "green", "blue", "pink", "slate", "red", "lime", "indigo", "mint", "gold", "plum", "orange"]);
 
@@ -354,8 +354,9 @@ let scanRosterAiReview = null;
 const ACTIVE_SCREEN_STORAGE_KEY = "shiftmate.activeScreen";
 let activeScreen = "calendar";
 
-// The web app is local-first. Cloud sharing, when configured, owns its own
-// optional magic-link session and must never gate startup or local roster use.
+// The web app is local-first. This facade is the one app-wide auth owner
+// (rendered in Settings > Account); Sharing only reads it and sign-in must never
+// gate startup or local roster use.
 const appAuthSession = Object.freeze({
   identity: () => window.RosterBuddyLegacyMagicLink && typeof window.RosterBuddyLegacyMagicLink.identity === "function"
     ? window.RosterBuddyLegacyMagicLink.identity() : null,
@@ -8293,7 +8294,7 @@ function buildCalendarIcsForRange(range = activeShareRange()) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.1//EN",
+    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.2//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:RosterBuddy roster",
@@ -10533,11 +10534,7 @@ function maybeShowCloudSyncChoice() {
   if (cloudSyncPreference.needsFirstUseChoice(appAuthSession.status().authenticated) && !cloudSyncChoiceOpen) openCloudSyncChoice({ firstUse: true });
 }
 function bindNavigation() {
-  function renderAccountStatus() {
-    const target = document.getElementById("account-settings-status");
-    if (target) target.textContent = "Local device";
-  }
-  renderAccountStatus();
+  if (window.RosterBuddyAccountView) window.RosterBuddyAccountView.bind({ document, auth: appAuthSession, addEventListener: window.addEventListener.bind(window) });
   renderCloudSyncSetting();
   document.getElementById("settings-cloud-sync-control").addEventListener("click", () => openCloudSyncChoice());
   document.getElementById("cloud-sync-enable").addEventListener("click", () => commitCloudSyncPreference("cloud-enabled"));
@@ -10724,7 +10721,7 @@ function cleanupOldAppCaches() {
   if (!("caches" in window)) return;
   caches.keys().then((keys) => Promise.all(
     keys
-      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-1")
+      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-2")
       .map((key) => caches.delete(key))
   )).catch((error) => {
     console.warn("RosterBuddy cache cleanup failed.", error);

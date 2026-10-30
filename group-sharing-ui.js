@@ -44,48 +44,8 @@
   let calendarGroupId = null;
   let lastUploadKey = '';
   let refreshInFlight = false;
-  // Owner schedule sharing is explicit per person and per group, recorded on
-  // this device only when the owner ticks the consent box. Nothing is uploaded
-  // for a group without that record, and the record is removed on withdrawal.
-  const OWNER_SHARE_KEY = 'rosterbuddy.ownerShareConsent.v1';
-  let lastOwnerUploadKey = '';
-  let ownerUploadRetryAt = 0;
-  function ownerShareStorageKey() { const who = account(); return who ? `${OWNER_SHARE_KEY}.${who.id}` : null; }
-  function ownerShareGroups() {
-    const key = ownerShareStorageKey();
-    try { const list = JSON.parse((key && localStorage.getItem(key)) || '[]'); return Array.isArray(list) ? list.map(String) : []; } catch (_) { return []; }
-  }
-  function ownerShareOn(groupId) { return ownerShareGroups().includes(String(groupId)); }
-  function setOwnerShare(groupId, on) {
-    const key = ownerShareStorageKey();
-    if (!key) return;
-    const rest = ownerShareGroups().filter((id) => id !== String(groupId));
-    try { localStorage.setItem(key, JSON.stringify(on ? rest.concat(String(groupId)) : rest)); } catch (_) {}
-    lastOwnerUploadKey = ''; ownerUploadRetryAt = 0;
-  }
-  // Best effort: switch the owner's schedule sharing off on the server so people
-  // already in the group stop seeing it. Local state is cleared by the caller.
-  async function withdrawServerSharing() {
-    const group = selectedGroup();
-    const current = account();
-    if (!group || !current || group.ownerId !== current.id || /^group_/i.test(String(group.id))) return;
-    if (!adapter || !adapter.status || adapter.status().mode !== 'cloud') { setOwnerShare(group.id, false); return; }
-    setOwnerShare(group.id, false);
-    try { await Promise.resolve(adapter.setSharingPreference(group.id, current.id, false)); }
-    catch (_) { setStatus('Sharing is off on this phone, but the group may still see your schedule until you reconnect and turn it off again.', true); }
-  }
 
   function appAuth() { return window.RosterBuddyCurrentAuth || null; }
-  // Only a closed category, the HTTP status and a fixed sentence are shown.
-  // Provider bodies, emails, URLs and tokens never reach the UI.
-  function authFailureText(error) {
-    const diagnostic = error && error.diagnostic;
-    if (diagnostic && typeof diagnostic.category === 'string' && typeof diagnostic.message === 'string') {
-      const status = Number.isInteger(diagnostic.status) ? `HTTP ${diagnostic.status}, ` : '';
-      return `Sign-in unavailable (${status}${diagnostic.category}): ${diagnostic.message}`;
-    }
-    return 'Sign-in unavailable. Your local roster is not affected.';
-  }
   function offlineNow() { return typeof navigator !== 'undefined' && navigator.onLine === false; }
   function isTransientError(error) {
     return offlineNow() || Boolean(error && (error.code === 'server_error' || error.code === 'rate_limited'));
@@ -110,9 +70,9 @@
       try {
         const parsed = backend.readSupabaseConfig(config);
         const factory = config.clientFactory || window.RosterBuddySupabaseClientFactory;
-        // One session only: the app-wide sign-in supplies the bearer token.
         const auth = appAuth();
-        const client = backend.createSupabaseClient(parsed, factory, auth && typeof auth.accessToken === 'function' ? { accessToken: () => auth.accessToken() } : undefined);
+        const accessToken = auth && typeof auth.accessToken === 'function' ? () => auth.accessToken() : undefined;
+        const client = backend.createSupabaseClient(parsed, factory, accessToken ? { accessToken } : undefined);
         transport = backend.createSupabaseTransport(client);
       } catch (_) { transport = null; }
     }
@@ -410,7 +370,7 @@
     const groups = hubState.groups;
     const messages = {
       loading: 'Loading your groups…',
-      'signed-out': 'Sign in with the optional sharing email to see your groups.',
+      'signed-out': 'Sign in from Settings > Account to see your groups. Your local roster is not affected.',
       local: groups.length ? 'Sharing is off on this device. These groups are saved on this phone only.' : 'Sharing is off on this device. A group you create stays on this phone only.',
       offline: 'You are offline. The groups shown may be out of date, and changes need a connection.',
       empty: 'You are not in a group yet. Create one, or open an invite you were sent.',
@@ -483,7 +443,7 @@
     syncIdentityPreference(current);
     const cloudStatus = adapter.status ? adapter.status() : { mode: 'local', reason: 'backend-not-configured' };
     const syncStatus = el('group-sync-status');
-    if (syncStatus) syncStatus.textContent = cloudStatus.mode === 'cloud' ? 'Sharing is on for this device.' : `Sharing is off. ${cloudStatus.reason === 'sync-consent-required' ? 'Tick the consent box to turn it on.' : 'Your rosters stay on this phone.'}`;
+    if (syncStatus) syncStatus.textContent = cloudStatus.mode === 'cloud' ? 'Cloud sync enabled for this session.' : `Local/offline mode. ${cloudStatus.reason === 'sync-consent-required' ? 'Explicit consent is required before cloud sync can start.' : 'Cloud sync is not enabled.'}`;
     const consent = el('group-sync-consent');
     if (consent) consent.checked = syncConsent;
     try { await restoreCloudSelection(); }
@@ -493,7 +453,7 @@
     if (stale()) return;
     if (calendarGroupId && calendarGroupId !== selectedGroupId) clearSharedCalendar();
     renderRosterSwitcher(switcherGroups(), current, calendarGroupId);
-    setStatus(current ? `Signed in as ${current.displayName || current.email}. ${cloudStatus.mode === 'cloud' ? 'Sharing is on.' : 'Sharing is off, so nothing leaves this phone.'}` : 'Sign in by email to share rosters. Until then everything stays on this phone.');
+    setStatus(current ? `App session: ${current.displayName || current.email}. ${cloudStatus.mode === 'cloud' ? 'Cloud sync is enabled.' : 'Local/offline sharing only; cloud sync is not enabled.'}` : 'Sharing is local-only until an optional sharing connection is configured.');
     const group = selectedGroup();
     const noGroup = el('sharing-no-group');
     const selectedCard = el('sharing-selected-group');
@@ -609,20 +569,6 @@
     const user = data.user || (data.session && data.session.user) || null;
     return user ? { id: user.id, email: user.email || '', displayName: (user.user_metadata && (user.user_metadata.display_name || user.user_metadata.name)) || user.email || 'Cloud account' } : null;
   }
-  el('sharing-request-magic-link').addEventListener('click', () => run(async () => {
-    const email = String(el('sharing-magic-link-email').value || '').trim();
-    const auth = appAuth();
-    if (!auth || typeof auth.requestMagicLink !== 'function') throw new Error('optional sharing auth is unavailable');
-    const status = el('sharing-magic-link-status');
-    try { await auth.requestMagicLink(email); }
-    catch (error) {
-      const text = authFailureText(error);
-      if (status) status.textContent = text;
-      throw new Error(text);
-    }
-    if (status) status.textContent = 'Check your email for the optional sharing link. Your local roster remains available.';
-    return 'Sharing link requested. Your local roster remains available.';
-  }));
   el('sharing-open-group').addEventListener('click', () => {
     if (!selectedGroup()) return;
     setShareView(true);
@@ -647,10 +593,9 @@
   el('group-enable-sync').addEventListener('click', async () => {
     syncConsent = Boolean(el('group-sync-consent').checked);
     if (!syncConsent) {
-      await withdrawServerSharing();
       if (syncPreference) syncPreference.set('local-only');
       clearCloudDerivedState();
-      setStatus('Sharing is turned off. Your schedule is no longer shared with this group.');
+      setStatus('Check the consent box before enabling cloud sync.', true);
       return;
     }
     if (syncPreference) syncPreference.set('cloud-enabled');
@@ -658,7 +603,7 @@
     const status = adapter.status ? adapter.status() : { mode: 'local', reason: 'backend-not-configured' };
     if (status.mode !== 'cloud') {
       await render();
-      setStatus(status.reason === 'backend-transport-unavailable' ? 'Sharing could not start on this device. Your rosters stay on this phone.' : 'Sharing is not available in this version. Your rosters stay on this phone.', true);
+      setStatus(status.reason === 'backend-transport-unavailable' ? 'Cloud sync consent recorded, but no configured client factory is available. Staying local/offline.' : 'Cloud sync is not configured. Staying local/offline.', true);
       return;
     }
     const current = account();
@@ -666,14 +611,13 @@
     const group = selectedGroup();
     if (!current || !group || group.ownerId !== current.id || /^group_/i.test(String(group.id))) {
       await render();
-      setStatus('Choose a group before turning on sharing.', true);
+      setStatus('Create or select a cloud connection before enabling cloud sync.', true);
       return;
     }
     try {
       await Promise.resolve(adapter.setSharingPreference(group.id, current.id, true));
-      setOwnerShare(group.id, true);
       await render();
-      setStatus('Sharing is on. People in this group can see your shift dates, codes and times.');
+      setStatus('Cloud sync enabled for this group.');
     } catch (error) {
       syncConsent = false;
       adapter = makeAdapter();
@@ -695,12 +639,12 @@
       if (currentStatus.mode === 'cloud') clearLocalGroupsBeforeCloudSelection();
       store.groups[group.id] = group;
       selectGroup(group.id);
+      if (currentStatus.mode === 'cloud') {
+        await Promise.resolve(adapter.setSharingPreference(group.id, current.id, true));
+      }
       showCreateForm = false;
-      const created = currentStatus.mode === 'cloud'
-        ? `Created ${group.name}. Your schedule is not shared until you turn sharing on.`
-        : `Created ${group.name}. It is saved on this phone only.`;
-      setStatus(created);
-      return created;
+      setStatus(`Created ${group.name}. Sharing is ready.`);
+      return `Created ${group.name}. Sharing is ready.`;
     });
   });
   el('group-invite').addEventListener('click', () => run(async () => {
@@ -800,7 +744,7 @@
   on('sharing-save-display-name', 'click', () => run(async () => {
     const name = String((el('sharing-display-name') || {}).value || '').trim();
     if (!name || name.length > 60 || name.includes('@')) throw new Error('Enter a short name without an email address.');
-    if (!adapter.status || adapter.status().mode !== 'cloud') throw new Error('Turn on sharing to change the name your group sees.');
+    if (!adapter.status || adapter.status().mode !== 'cloud') throw new Error('Turn on cloud sync to change the name your group sees.');
     await Promise.resolve(adapter.setDisplayName(name));
     return 'Name saved. Your group sees this name next to your schedule.';
   }));
@@ -818,14 +762,11 @@
   window.addEventListener('offline', () => { loadHub(); });
   window.addEventListener('storage', (event) => { if (event.key === STORAGE) { store = load(); adapter = makeAdapter(); render(); } });
   window.addEventListener('rosterbuddy:sync-preference-changed', () => {
+    if (adapter && typeof adapter.clearCloudState === 'function') adapter.clearCloudState();
     syncConsent = syncPreference ? syncPreference.canUpload() : false;
-    const withdrawn = !syncConsent ? withdrawServerSharing() : Promise.resolve();
-    withdrawn.then(() => {
-      if (adapter && typeof adapter.clearCloudState === 'function') adapter.clearCloudState();
-      if (!syncConsent) clearCloudDerivedState();
-      adapter = makeAdapter();
-      render();
-    });
+    if (!syncConsent) clearCloudDerivedState();
+    adapter = makeAdapter();
+    render();
   });
   window.addEventListener('rosterbuddy:auth-changed', () => {
     const identity = appAuth() && appAuth().identity();
@@ -852,21 +793,9 @@
     const current = account();
     if (group && current) maybeUploadOutgoing(group).catch(() => {});
     if (!group || !current || group.ownerId !== current.id || !window.RosterBuddyGetLocalRoster) return;
-    const cloud = Boolean(adapter.status && adapter.status().mode === 'cloud');
-    // Cloud: only with the owner's recorded consent, and only when the
-    // allowlisted projection changed (pay/notes edits never trigger an upload).
-    if (cloud && !ownerShareOn(group.id)) return;
     const latest = window.RosterBuddyGetLocalRoster();
-    const projectionKey = cloud ? `${group.id}|${JSON.stringify(adapter.projectRoster(latest.roster, latest.templates))}` : null;
-    const changed = cloud
-      ? projectionKey !== lastOwnerUploadKey
-      : (JSON.stringify(group.roster) !== JSON.stringify(latest.roster) || JSON.stringify(group.templates) !== JSON.stringify(latest.templates));
-    if (!changed || (cloud && Date.now() < ownerUploadRetryAt)) return;
-    if (cloud) lastOwnerUploadKey = projectionKey;
-    try { await Promise.resolve(adapter.updateRoster(group.id, current.id, latest.roster, latest.templates)); save(); await render(); }
-    catch (error) {
-      if (cloud) { lastOwnerUploadKey = ''; ownerUploadRetryAt = Date.now() + 30000; }
-      setStatus(error.message || 'Roster update failed.', true);
+    if (JSON.stringify(group.roster) !== JSON.stringify(latest.roster) || JSON.stringify(group.templates) !== JSON.stringify(latest.templates)) {
+      try { await Promise.resolve(adapter.updateRoster(group.id, current.id, latest.roster, latest.templates)); save(); await render(); } catch (error) { setStatus(error.message || 'Roster update failed.', true); }
     }
   }, 1000);
   render();
