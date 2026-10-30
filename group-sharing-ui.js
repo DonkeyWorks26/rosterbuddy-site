@@ -169,7 +169,15 @@
   function isAccessError(error) { return Boolean(backend && backend.isRevocationError && backend.isRevocationError(error)); }
   function syncIdentityPreference(identity) {
     if (syncPreference && typeof syncPreference.setIdentity === 'function') syncPreference.setIdentity(identity);
+    const previous = syncConsent;
     syncConsent = Boolean(identity && syncPreference && syncPreference.canUpload());
+    // The adapter is first built at load, before the account id is known, from the account-less preference.
+    // Once the per-account consent is read it must be rebuilt, or a saved consent never reaches the server.
+    if (syncConsent !== previous) {
+      if (adapter && typeof adapter.clearCloudState === 'function') adapter.clearCloudState();
+      if (!syncConsent) clearCloudDerivedState();
+      adapter = makeAdapter();
+    }
   }
   function clearInviteUiState() {
     const input = el('group-invite-token');
