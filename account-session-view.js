@@ -65,6 +65,8 @@
       set('account-settings-body', (n) => { n.textContent = model.body; });
       set('account-email', (n) => { n.disabled = !model.canRequestLink; n.classList.toggle('hidden-control', model.state === 'signed-in'); });
       set('account-request-link', (n) => { n.disabled = !model.canRequestLink; n.classList.toggle('hidden-control', model.state === 'signed-in'); });
+      const googleOffered = model.canRequestLink && Boolean(auth && typeof auth.googleSignInAvailable === 'function' && auth.googleSignInAvailable());
+      set('account-google-sign-in', (n) => { n.disabled = !googleOffered; n.classList.toggle('hidden-control', !googleOffered); });
       set('account-sign-out', (n) => { n.disabled = !model.canSignOut; n.classList.toggle('hidden-control', !model.canSignOut); });
       set('account-auth-message', (n) => { n.textContent = model.state === 'signed-in' ? '' : transient; });
       return model;
@@ -74,12 +76,17 @@
       const input = el('account-email');
       if (!auth || typeof auth.requestMagicLink !== 'function') { transient = failureText(null); render(); return; }
       try {
-        await auth.requestMagicLink(String((input && input.value) || '').trim());
-        transient = 'Check your email for the sign-in link. Your local roster remains available.';
+        const result = await auth.requestMagicLink(String((input && input.value) || '').trim());
+        const opensApp = Boolean(result && typeof result.redirectTo === 'string' && /^rosterbuddy:/i.test(result.redirectTo));
+        transient = 'Check your email for the sign-in link' + (opensApp ? ' and open it on this phone to return to RosterBuddy.' : ' (it opens in your browser).') + ' Your local roster remains available.';
       } catch (error) {
         transient = failureText(error);
       }
       render();
+    });
+    const googleButton = el('account-google-sign-in');
+    if (googleButton) googleButton.addEventListener('click', () => {
+      try { auth.startGoogleSignIn(); } catch (_) { transient = failureText(null); render(); }
     });
     const signOutButton = el('account-sign-out');
     if (signOutButton) signOutButton.addEventListener('click', async () => {

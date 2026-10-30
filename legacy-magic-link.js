@@ -51,9 +51,13 @@
     }
   }
   function configured() { return errors.length === 0; }
+  // True only inside the installed Android app. Either signal is enough: Capacitor's injected runtime, or the
+  // app's own JavaScript bridge (added natively by MainActivity, so a plain browser can never have it).
   function nativeAndroid() {
     const capacitor = root.Capacitor;
-    return Boolean(capacitor && typeof capacitor.isNativePlatform === 'function' && capacitor.isNativePlatform() && typeof capacitor.getPlatform === 'function' && capacitor.getPlatform() === 'android');
+    const viaCapacitor = Boolean(capacitor && typeof capacitor.isNativePlatform === 'function' && capacitor.isNativePlatform() && typeof capacitor.getPlatform === 'function' && capacitor.getPlatform() === 'android');
+    const viaBridge = Boolean(root.RosterBuddyAndroid && (typeof root.RosterBuddyAndroid === 'object' || typeof root.RosterBuddyAndroid === 'function'));
+    return viaCapacitor || viaBridge;
   }
   function redirectUrl() {
     return nativeAndroid() ? 'rosterbuddy://auth/callback' : 'https://donkeyworks26.github.io/rosterbuddy-site/auth-callback.html';
@@ -156,8 +160,24 @@
   async function requestMagicLink(email, allowCreate) {
     const normalized = String(email || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) throw new Error('email_invalid');
-    await request('/auth/v1/otp', { method: 'POST', body: JSON.stringify({ email: normalized, options: { shouldCreateUser: allowCreate === true, emailRedirectTo: redirectUrl() } }) });
+    // GoTrue reads the redirect from the `redirect_to` query parameter; a redirect inside the JSON body is ignored
+    // and Supabase silently falls back to its default Site URL (the hosted web page), even inside the Android app.
+    await request('/auth/v1/otp?redirect_to=' + encodeURIComponent(redirectUrl()), { method: 'POST', body: JSON.stringify({ email: normalized, options: { shouldCreateUser: allowCreate === true, emailRedirectTo: redirectUrl() } }) });
     return { ok: true, email: normalized, redirectTo: redirectUrl() };
+  }
+  // Google sign-in uses Supabase's hosted OAuth redirect (implicit flow), which returns the same
+  // `#access_token=...&refresh_token=...` fragment that resumeMagicLink() already consumes. It is web-only:
+  // Google refuses OAuth inside an embedded WebView, so the installed Android app does not offer it yet.
+  function googleSignInAvailable() { return configured() && !nativeAndroid(); }
+  function googleSignInUrl() {
+    if (!googleSignInAvailable()) return '';
+    return baseUrl + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(redirectUrl());
+  }
+  function startGoogleSignIn() {
+    const url = googleSignInUrl();
+    if (!url) throw new Error('google_sign_in_unavailable');
+    root.location.assign(url);
+    return { ok: true };
   }
   async function resumeMagicLink() {
     const tokens = tokenPair();
@@ -218,7 +238,7 @@
     resumeMagicLink().catch(function () { try { root.history.replaceState({}, '', root.location.pathname + root.location.search); } catch (_) {} });
   }
 
-  root.RosterBuddyLegacyMagicLink = { configured: configured(), errors: errors.slice(), status, identity, accessToken, requestMagicLink, resumeMagicLink, signOut, redirectUrl, authDiagnostic };
+  root.RosterBuddyLegacyMagicLink = { configured: configured(), errors: errors.slice(), status, identity, accessToken, requestMagicLink, resumeMagicLink, signOut, redirectUrl, authDiagnostic, googleSignInAvailable, googleSignInUrl, startGoogleSignIn };
   if (typeof root.addEventListener === 'function') root.addEventListener('hashchange', consumeLateCallback);
   if (configured()) resumeMagicLink().catch(function () { writeSession(null); });
 })(typeof window !== 'undefined' ? window : null);
