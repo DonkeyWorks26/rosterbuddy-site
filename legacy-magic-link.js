@@ -14,15 +14,41 @@
   else if (/^(service_role|sb_secret)_/i.test(anonKey)) errors.push('service_role_key_rejected');
   let session = readSession();
 
+  // The session persists across app restarts in localStorage. A session left in
+  // sessionStorage by an earlier build is migrated once. If localStorage is not
+  // available (or full) the tab-only store is used instead, as before. Every
+  // sign-out path calls writeSession(null), which clears both stores.
+  function storageFor(kind) {
+    try { return root[kind] || null; } catch (_) { return null; }
+  }
+  function parseStored(store) {
+    try { return store ? JSON.parse(store.getItem(SESSION_KEY) || 'null') : null; } catch (_) { return null; }
+  }
   function readSession() {
-    try { return JSON.parse(root.sessionStorage.getItem(SESSION_KEY) || 'null'); } catch (_) { return null; }
+    const persistent = storageFor('localStorage');
+    const tab = storageFor('sessionStorage');
+    const saved = parseStored(persistent);
+    if (saved) return saved;
+    const legacy = parseStored(tab);
+    if (legacy && persistent) {
+      try { persistent.setItem(SESSION_KEY, JSON.stringify(legacy)); tab.removeItem(SESSION_KEY); } catch (_) {}
+    }
+    return legacy;
   }
   function writeSession(value) {
     session = value || null;
+    const persistent = storageFor('localStorage');
+    const tab = storageFor('sessionStorage');
+    try { if (persistent) persistent.removeItem(SESSION_KEY); } catch (_) {}
+    try { if (tab) tab.removeItem(SESSION_KEY); } catch (_) {}
+    if (!session) return;
+    const serialized = JSON.stringify(session);
     try {
-      if (session) root.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      else root.sessionStorage.removeItem(SESSION_KEY);
-    } catch (_) {}
+      if (!persistent) throw new Error('no persistent storage');
+      persistent.setItem(SESSION_KEY, serialized);
+    } catch (_) {
+      try { if (tab) tab.setItem(SESSION_KEY, serialized); } catch (__) {}
+    }
   }
   function configured() { return errors.length === 0; }
   function nativeAndroid() {

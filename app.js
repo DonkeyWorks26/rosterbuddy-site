@@ -43,6 +43,7 @@ let calendarViewSelectedDay = null;
 const casualRosters = {};
 const higherDutiesRosters = {};
 const onCallRosters = {};
+const lwopRosters = {};
 const additionalHoursRosters = {};
 const reminders = {};
 const dayNotes = {};
@@ -63,7 +64,7 @@ const TEMPLATE_OFF_TYPE_REPAIR_SCHEMA_VERSION = 2;
 // Version 3 merges back the built-in templates the old drifted key allowlist
 // had already deleted from installed state.
 const TEMPLATE_BUILT_IN_RESTORE_SCHEMA_VERSION = 3;
-const APP_VERSION = "0.2.2";
+const APP_VERSION = "0.2.3";
 const FIXED_CASUAL_LOADING = 0.25;
 const TEMPLATE_COLOURS = new Set(["aqua", "coral", "amber", "violet", "green", "blue", "pink", "slate", "red", "lime", "indigo", "mint", "gold", "plum", "orange"]);
 
@@ -192,6 +193,8 @@ let payRules = {
   baseRate: 48.81,
   nightLoading: 0,
   afterHoursStart: "19:00",
+  afterHoursEnd: "06:00",
+  leaveHoursPerDay: 7.6,
   saturdayExtra: 0.5,
   sundayExtra: 0.75,
   overtimeAfterHours: 76,
@@ -245,6 +248,8 @@ const FRESH_PAY_RULES = {
   baseRate: 0,
   nightLoading: 0,
   afterHoursStart: "",
+  afterHoursEnd: "",
+  leaveHoursPerDay: 7.6,
   saturdayExtra: 0,
   sundayExtra: 0,
   overtimeAfterHours: 0,
@@ -519,7 +524,7 @@ let shareRangeMode = "pay-cycle";
 let shareWeekStartDate = "";
 let currentSharePreviewText = "";
 let payCycleViewOffset = 0;
-let entryModifierState = { casual: false, higherDuties: false, onCall: false };
+let entryModifierState = { casual: false, higherDuties: false, onCall: false, lwop: false };
 const history = ["calendar"];
 
 function clearObject(target) {
@@ -582,6 +587,10 @@ function applyStatePayload(saved) {
   if (saved.onCallRosters && typeof saved.onCallRosters === "object") {
     clearObject(onCallRosters);
     Object.assign(onCallRosters, saved.onCallRosters);
+  }
+  if (saved.lwopRosters && typeof saved.lwopRosters === "object") {
+    clearObject(lwopRosters);
+    Object.assign(lwopRosters, saved.lwopRosters);
   }
   if (saved.additionalHoursRosters && typeof saved.additionalHoursRosters === "object") {
     clearObject(additionalHoursRosters);
@@ -666,6 +675,7 @@ function replaceStateWithPayload(saved) {
   clearObject(casualRosters);
   clearObject(higherDutiesRosters);
   clearObject(onCallRosters);
+  clearObject(lwopRosters);
   clearObject(additionalHoursRosters);
   clearObject(reminders);
   clearObject(dayNotes);
@@ -680,6 +690,7 @@ function replaceStateWithPayload(saved) {
   Object.assign(casualRosters, saved.casualRosters && typeof saved.casualRosters === "object" ? saved.casualRosters : {});
   Object.assign(higherDutiesRosters, saved.higherDutiesRosters && typeof saved.higherDutiesRosters === "object" ? saved.higherDutiesRosters : {});
   Object.assign(onCallRosters, saved.onCallRosters && typeof saved.onCallRosters === "object" ? saved.onCallRosters : {});
+  Object.assign(lwopRosters, saved.lwopRosters && typeof saved.lwopRosters === "object" ? saved.lwopRosters : {});
   Object.assign(additionalHoursRosters, saved.additionalHoursRosters && typeof saved.additionalHoursRosters === "object" ? saved.additionalHoursRosters : {});
   Object.assign(reminders, saved.reminders && typeof saved.reminders === "object" ? saved.reminders : {});
   Object.assign(dayNotes, saved.dayNotes && typeof saved.dayNotes === "object" ? saved.dayNotes : {});
@@ -763,6 +774,7 @@ function currentStatePayload() {
     casualRosters: JSON.parse(JSON.stringify(casualRosters)),
     higherDutiesRosters: JSON.parse(JSON.stringify(higherDutiesRosters)),
     onCallRosters: JSON.parse(JSON.stringify(onCallRosters)),
+    lwopRosters: JSON.parse(JSON.stringify(lwopRosters)),
     additionalHoursRosters: JSON.parse(JSON.stringify(additionalHoursRosters)),
     reminders: JSON.parse(JSON.stringify(reminders)),
     dayNotes: JSON.parse(JSON.stringify(dayNotes)),
@@ -939,6 +951,12 @@ function currentRoster() {
   return rosters[key];
 }
 
+function currentLwopRoster() {
+  const key = monthKey();
+  if (!lwopRosters[key]) lwopRosters[key] = {};
+  return lwopRosters[key];
+}
+
 function currentCasualRoster() {
   const key = monthKey();
   if (!casualRosters[key]) casualRosters[key] = {};
@@ -1084,6 +1102,7 @@ function clearShiftDay(day) {
   delete currentCasualRoster()[day];
   delete currentHigherDutiesRoster()[day];
   delete currentOnCallRoster()[day];
+  delete currentLwopRoster()[day];
   delete currentAdditionalHoursRoster()[day];
 }
 
@@ -1126,6 +1145,15 @@ function isCasualDay(day) {
 function setCasualDay(day, casual) {
   if (casual) currentCasualRoster()[day] = true;
   else delete currentCasualRoster()[day];
+}
+
+function isLwopDay(day) {
+  return Boolean(currentLwopRoster()[day]);
+}
+
+function setLwopDay(day, lwop) {
+  if (lwop) currentLwopRoster()[day] = true;
+  else delete currentLwopRoster()[day];
 }
 
 function isHigherDutiesDay(day) {
@@ -6130,19 +6158,6 @@ function isNightShift(key, template) {
   return key === "night" || /night/i.test(template.label);
 }
 
-function shiftTriggersAfterHours(template) {
-  const start = parseClock(template.start);
-  const finish = parseClock(template.finish);
-  const threshold = parseClock(payRules.afterHoursStart);
-  if (start === null || finish === null || threshold === null) return false;
-
-  let adjustedFinish = finish;
-  let adjustedThreshold = threshold;
-  if (adjustedFinish <= start) adjustedFinish += 24 * 60;
-  if (adjustedThreshold < start) adjustedThreshold += 24 * 60;
-  return adjustedFinish > adjustedThreshold;
-}
-
 function easterSunday(year) {
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -6275,11 +6290,26 @@ function minutesOverlap(startA, endA, startB, endB) {
   return Math.max(0, Math.min(endA, endB) - Math.max(startA, startB));
 }
 
-function afterHoursMinutesForSegment(segmentStart, segmentEnd, thresholdMinutes) {
-  if (thresholdMinutes === null) return 0;
-  const threshold = new Date(segmentStart);
-  threshold.setHours(0, thresholdMinutes, 0, 0);
-  return Math.max(0, (segmentEnd - Math.max(segmentStart, threshold)) / 60000);
+// Night-loading window, in minutes after midnight. It wraps midnight when the
+// end is before the start (19:00-06:00). A blank end means "from the start until
+// midnight" (the original behaviour); a blank start, or start equal to end,
+// means no window at all so nothing is loaded by accident.
+function nightLoadingIntervals(startMinutes, endMinutes) {
+  if (startMinutes === null) return [];
+  if (endMinutes === null) return [[startMinutes, 1440]];
+  if (endMinutes === startMinutes) return [];
+  if (endMinutes > startMinutes) return [[startMinutes, endMinutes]];
+  return [[0, endMinutes], [startMinutes, 1440]];
+}
+
+// Raw minutes of this single-calendar-day segment that fall inside the window.
+function afterHoursMinutesForSegment(segmentStart, segmentEnd, startMinutes, endMinutes) {
+  const intervals = nightLoadingIntervals(startMinutes, endMinutes);
+  if (!intervals.length) return 0;
+  const segmentStartMinutes = segmentStart.getHours() * 60 + segmentStart.getMinutes();
+  const crossesToNextDay = segmentEnd.getDate() !== segmentStart.getDate() || segmentEnd.getMonth() !== segmentStart.getMonth();
+  const segmentEndMinutes = crossesToNextDay ? 1440 : segmentEnd.getHours() * 60 + segmentEnd.getMinutes();
+  return intervals.reduce((total, [from, to]) => total + minutesOverlap(segmentStartMinutes, segmentEndMinutes, from, to), 0);
 }
 
 function splitShiftIntoPaidSegments(date, template) {
@@ -6324,9 +6354,10 @@ function scaleSegmentsToPaidHours(segments, template) {
 }
 
 function calculateShiftPaySegments(date, template) {
-  const thresholdMinutes = parseClock(payRules.afterHoursStart);
+  const startMinutes = parseClock(payRules.afterHoursStart);
+  const endMinutes = parseClock(payRules.afterHoursEnd);
   return scaleSegmentsToPaidHours(splitShiftIntoPaidSegments(date, template), template).map((segment) => {
-    const afterRawMinutes = afterHoursMinutesForSegment(segment.start, segment.end, thresholdMinutes);
+    const afterRawMinutes = afterHoursMinutesForSegment(segment.start, segment.end, startMinutes, endMinutes);
     const afterHours = segment.rawMinutes ? (afterRawMinutes * (segment.paidMinutes / segment.rawMinutes)) / 60 : 0;
     const day = segment.date.getDay();
     const publicHoliday = isPublicHolidayDate(segment.date);
@@ -6397,6 +6428,18 @@ function isHigherDutiesDate(date) {
   return Boolean((higherDutiesRosters[monthKeyForDate(date)] || {})[date.getDate()]);
 }
 
+function isLwopDate(date) {
+  return Boolean((lwopRosters[monthKeyForDate(date)] || {})[date.getDate()]);
+}
+
+// A leave type's own paid hours win; otherwise the "Leave hours per day" pay rule applies.
+function leaveHoursForTemplate(template) {
+  const own = Number(template && template.hours);
+  if (Number.isFinite(own) && own > 0) return own;
+  const standard = Number(payRules.leaveHoursPerDay);
+  return Number.isFinite(standard) && standard > 0 ? standard : 0;
+}
+
 function isOnCallDate(date) {
   return Boolean((onCallRosters[monthKeyForDate(date)] || {})[date.getDate()]);
 }
@@ -6437,6 +6480,8 @@ function calculateRosterStatsForRange(startDate, endDate) {
   let additionalHoursPay = 0;
   let onCallDays = 0;
   let onCallPay = 0;
+  let leaveHours = 0;
+  let leavePay = 0;
 
   for (let date = new Date(startDate); date <= endDate; date = addDays(date, 1)) {
     const shiftKey = getRosterForDate(date)[date.getDate()];
@@ -6453,7 +6498,16 @@ function calculateRosterStatsForRange(startDate, endDate) {
     }
     if (!template) continue;
 
-    if (template.type === "leave") leaveDays += 1;
+    if (template.type === "leave") {
+      leaveDays += 1;
+      // Leave is paid at base hours x rate only (no loadings, penalties or overtime),
+      // unless the day is marked as leave without pay (LWOP).
+      if (!isLwopDate(date)) {
+        const paidLeaveHours = leaveHoursForTemplate(template);
+        leaveHours += paidLeaveHours;
+        leavePay += paidLeaveHours * rateForDate(date);
+      }
+    }
     if (isNightShift(shiftKey, template)) nights += 1;
     if (template.type !== "work") continue;
 
@@ -6477,10 +6531,10 @@ function calculateRosterStatsForRange(startDate, endDate) {
   }
 
   const weekendPay = saturdayPay + sundayPay;
-  const gross = basePay + nightPay + casualPay + weekendPay + publicHolidayPay + additionalHoursPay + onCallPay;
+  const gross = basePay + nightPay + casualPay + weekendPay + publicHolidayPay + additionalHoursPay + onCallPay + leavePay;
   const averageRate = hours > 0 ? basePay / hours : payRules.baseRate;
 
-  return { hours, rosteredHours: hours, additionalHours, totalHours: hours + additionalHours, nights, leaveDays, afterHours, casualHours, saturdayHours, sundayHours, publicHolidayHours, nightPay, casualPay, weekendPay, publicHolidayPay, additionalHoursPay, onCallDays, onCallPay, gross, basePay, averageRate, startDate, endDate };
+  return { hours, rosteredHours: hours, additionalHours, totalHours: hours + additionalHours, nights, leaveDays, leaveHours, leavePay, afterHours, casualHours, saturdayHours, sundayHours, publicHolidayHours, nightPay, casualPay, weekendPay, publicHolidayPay, additionalHoursPay, onCallDays, onCallPay, gross, basePay, averageRate, startDate, endDate };
 }
 
 function selectedPeriodRange(offset = 0) {
@@ -6503,55 +6557,83 @@ function selectedPeriodRange(offset = 0) {
   return { startDate, endDate };
 }
 
-function estimateAnnualTaxFromBrackets(annualTaxableGross, taxFreeThreshold = true) {
+// Lowest resident rate (the 18,201-45,000 band) by financial year. Legislated cuts:
+// 16% to 30 Jun 2026, 15% from 1 Jul 2026, 14% from 1 Jul 2027 (Treasury Laws
+// Amendment (More Cost of Living Relief) Act 2025). The upper bands are unchanged.
+// A pay period is priced at the rate in force on its last day.
+function lowestResidentTaxRateForDate(date) {
+  const reference = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+  const key = reference.getFullYear() * 10000 + (reference.getMonth() + 1) * 100 + reference.getDate();
+  if (key >= 20270701) return 0.14;
+  if (key >= 20260701) return 0.15;
+  return 0.16;
+}
+
+function estimateAnnualTaxFromBrackets(annualTaxableGross, taxFreeThreshold = true, lowRate = 0.16) {
   const taxable = Math.max(0, annualTaxableGross);
+  const topOfLowBand = taxFreeThreshold ? (45000 - 18200) * lowRate : 45000 * lowRate;
+  const taxAt135k = topOfLowBand + 90000 * 0.30;
+  const taxAt190k = taxAt135k + 55000 * 0.37;
   if (!taxFreeThreshold) {
-    if (taxable <= 45000) return taxable * 0.16;
-    if (taxable <= 135000) return 7200 + (taxable - 45000) * 0.30;
-    if (taxable <= 190000) return 34200 + (taxable - 135000) * 0.37;
-    return 54550 + (taxable - 190000) * 0.45;
+    if (taxable <= 45000) return taxable * lowRate;
+    if (taxable <= 135000) return topOfLowBand + (taxable - 45000) * 0.30;
+    if (taxable <= 190000) return taxAt135k + (taxable - 135000) * 0.37;
+    return taxAt190k + (taxable - 190000) * 0.45;
   }
   if (taxable <= 18200) return 0;
-  if (taxable <= 45000) return (taxable - 18200) * 0.16;
-  if (taxable <= 135000) return 4288 + (taxable - 45000) * 0.30;
-  if (taxable <= 190000) return 31288 + (taxable - 135000) * 0.37;
-  return 51638 + (taxable - 190000) * 0.45;
+  if (taxable <= 45000) return (taxable - 18200) * lowRate;
+  if (taxable <= 135000) return topOfLowBand + (taxable - 45000) * 0.30;
+  if (taxable <= 190000) return taxAt135k + (taxable - 135000) * 0.37;
+  return taxAt190k + (taxable - 190000) * 0.45;
 }
 
 function estimateMedicareLevyFromAnnualIncome(annualTaxableGross) {
   return Math.max(0, annualTaxableGross) * 0.02;
 }
 
-function estimatePaygTax(taxableGross, periodKey = selectedPayPeriod, taxFreeThreshold = payRules.taxFreeThreshold) {
+function estimatePaygTax(taxableGross, periodKey = selectedPayPeriod, taxFreeThreshold = payRules.taxFreeThreshold, onDate = new Date()) {
   const periodWeeks = periodKey === "weekly" ? 1 : periodKey === "monthly" ? 52 / 12 : 2;
   const annualTaxableGross = Math.max(0, taxableGross) / periodWeeks * 52;
-  const annualTax = estimateAnnualTaxFromBrackets(annualTaxableGross, taxFreeThreshold) + estimateMedicareLevyFromAnnualIncome(annualTaxableGross);
+  const annualTax = estimateAnnualTaxFromBrackets(annualTaxableGross, taxFreeThreshold, lowestResidentTaxRateForDate(onDate)) + estimateMedicareLevyFromAnnualIncome(annualTaxableGross);
   return Math.min(Math.max(0, taxableGross), Math.round(annualTax / 52 * periodWeeks));
 }
 
-function calculateTaxForMethod(taxableGross, periodKey = selectedPayPeriod) {
+function calculateTaxForMethod(taxableGross, periodKey = selectedPayPeriod, onDate = new Date()) {
   const method = payRules.taxMethod || "percentage";
   if (method === "manual") return Math.min(Math.max(0, taxableGross), Math.max(0, payRules.paygTaxOverride || 0));
-  if (method === "payg") return estimatePaygTax(taxableGross, periodKey, payRules.taxFreeThreshold !== false);
+  if (method === "payg") return estimatePaygTax(taxableGross, periodKey, payRules.taxFreeThreshold !== false, onDate);
   return Math.min(Math.max(0, taxableGross), Math.max(0, taxableGross * payRules.taxRate));
+}
+
+// The overtime threshold is entered per fortnight, so it scales with the number
+// of days in the range being priced (a 31-day month is 31/14 fortnights, not 2).
+function fortnightsInRange(startDate, endDate) {
+  return (calendarDaysBetween(startDate, endDate) + 1) / 14;
+}
+
+// Salary packaging and Meals & Entertainment are entered per fortnight and
+// scaled to the pay period being shown: weekly is half, monthly is 26/12.
+function fortnightPackagingFactor(periodKey) {
+  return periodKey === "weekly" ? 0.5 : periodKey === "monthly" ? 26 / 12 : 1;
 }
 
 function calculateStats() {
   const monthly = calculateMonthlyStats();
   const range = selectedPeriodRange(payCycleViewOffset);
   const period = calculateRosterStatsForRange(range.startDate, range.endDate);
-  const thresholdFactor = selectedPayPeriod === "weekly" ? 0.5 : selectedPayPeriod === "monthly" ? 2 : 1;
-  const monthlyOvertimeHours = Math.max(0, monthly.hours - payRules.overtimeAfterHours * 2);
+  const thresholdFactor = fortnightsInRange(range.startDate, range.endDate);
+  const monthlyOvertimeHours = Math.max(0, monthly.hours - payRules.overtimeAfterHours * fortnightsInRange(monthly.startDate, monthly.endDate));
   const monthlyOvertimePay = monthlyOvertimeHours * monthly.averageRate * Math.max(0, payRules.overtimeMultiplier - 1);
   const monthlyGross = monthly.gross + monthlyOvertimePay;
-  const monthlySalarySacrifice = Math.min(monthlyGross, payRules.salarySacrifice);
+  const monthlyPackagingFactor = fortnightPackagingFactor("monthly");
+  const monthlySalarySacrifice = Math.min(monthlyGross, payRules.salarySacrifice * monthlyPackagingFactor);
   const monthlyMealsEntertainmentSacrifice = Math.min(
     Math.max(0, monthlyGross - monthlySalarySacrifice),
-    payRules.mealsEntertainmentSacrifice,
+    payRules.mealsEntertainmentSacrifice * monthlyPackagingFactor,
   );
   const monthlyPackageValue = monthlySalarySacrifice + monthlyMealsEntertainmentSacrifice;
   const monthlyTaxableGross = Math.max(0, monthlyGross - monthlyPackageValue);
-  const monthlyTax = calculateTaxForMethod(monthlyTaxableGross, "monthly");
+  const monthlyTax = calculateTaxForMethod(monthlyTaxableGross, "monthly", monthly.endDate);
   const monthlyAdditionalTax = Math.min(monthlyTaxableGross, payRules.additionalTax);
   const monthlyNet = Math.max(0, monthlyTaxableGross - monthlyTax - monthlyAdditionalTax);
   const monthlyUsableTakeHome = monthlyNet + monthlyPackageValue;
@@ -6568,15 +6650,17 @@ function calculateStats() {
   const periodPublicHolidayPay = period.publicHolidayPay;
   const periodAdditionalHoursPay = period.additionalHoursPay;
   const periodOnCallPay = period.onCallPay;
-  const gross = periodBasePay + periodNightPay + periodCasualPay + periodWeekendPay + periodPublicHolidayPay + periodOvertimePay + periodAdditionalHoursPay + periodOnCallPay;
-  const salarySacrifice = Math.min(gross, payRules.salarySacrifice);
+  const periodLeavePay = period.leavePay;
+  const gross = periodBasePay + periodNightPay + periodCasualPay + periodWeekendPay + periodPublicHolidayPay + periodOvertimePay + periodAdditionalHoursPay + periodOnCallPay + periodLeavePay;
+  const packagingFactor = fortnightPackagingFactor(selectedPayPeriod);
+  const salarySacrifice = Math.min(gross, payRules.salarySacrifice * packagingFactor);
   const mealsEntertainmentSacrifice = Math.min(
     Math.max(0, gross - salarySacrifice),
-    payRules.mealsEntertainmentSacrifice,
+    payRules.mealsEntertainmentSacrifice * packagingFactor,
   );
   const packageValue = salarySacrifice + mealsEntertainmentSacrifice;
   const taxableGross = Math.max(0, gross - packageValue);
-  const tax = calculateTaxForMethod(taxableGross, selectedPayPeriod);
+  const tax = calculateTaxForMethod(taxableGross, selectedPayPeriod, range.endDate);
   const additionalTax = Math.min(taxableGross, payRules.additionalTax);
   const net = Math.max(0, taxableGross - tax - additionalTax);
   const usableTakeHome = net + packageValue;
@@ -6601,6 +6685,8 @@ function calculateStats() {
     periodAdditionalHoursPay,
     periodOnCallDays: period.onCallDays,
     periodOnCallPay,
+    periodLeavePay,
+    periodLeaveHours: period.leaveHours,
     periodNights: period.nights,
     periodBasePay,
     periodNightPay,
@@ -6682,6 +6768,7 @@ function updatePayDisplay() {
   document.getElementById("public-holiday-pay").textContent = money(stats.periodPublicHolidayPay);
   document.getElementById("additional-hours-pay").textContent = money(stats.periodAdditionalHoursPay);
   document.getElementById("on-call-pay").textContent = money(stats.periodOnCallPay);
+  document.getElementById("leave-pay").textContent = money(stats.periodLeavePay);
   document.getElementById("overtime-pay").textContent = money(stats.periodOvertimePay);
   document.getElementById("gross-pay").textContent = money(stats.periodGross);
   document.getElementById("salary-sacrifice-pay").textContent = "-" + money(stats.periodSalarySacrifice);
@@ -6734,6 +6821,8 @@ function savePayRules() {
     baseRate: mainRate,
     nightLoading: parseNumber(document.getElementById("night-rate").value, 0) / 100,
     afterHoursStart: normaliseTimeText(document.getElementById("after-hours-start").value) || "19:00",
+    afterHoursEnd: parseClock(document.getElementById("after-hours-end").value) === null ? "" : normaliseTimeText(document.getElementById("after-hours-end").value),
+    leaveHoursPerDay: Math.max(0, parseNumber(document.getElementById("leave-hours-per-day").value, payRules.leaveHoursPerDay)),
     saturdayExtra: Math.max(0, parseNumber(document.getElementById("sat-rate").value, 1.5) - 1),
     sundayExtra: Math.max(0, parseNumber(document.getElementById("sun-rate").value, 1.75) - 1),
     overtimeAfterHours: parseNumber(document.getElementById("overtime-after").value, 76),
@@ -6763,6 +6852,8 @@ function formatPayRuleInputs() {
   document.getElementById("sun-rate").value = formatMultiplier(parseNumber(document.getElementById("sun-rate").value, payRules.sundayExtra + 1));
   document.getElementById("night-rate").value = formatPercent(parseNumber(document.getElementById("night-rate").value, payRules.nightLoading * 100));
   document.getElementById("after-hours-start").value = normaliseTimeText(document.getElementById("after-hours-start").value) || payRules.afterHoursStart;
+  document.getElementById("after-hours-end").value = normaliseTimeText(document.getElementById("after-hours-end").value);
+  document.getElementById("leave-hours-per-day").value = formatHours(parseNumber(document.getElementById("leave-hours-per-day").value, payRules.leaveHoursPerDay)) + " hours";
   document.getElementById("pay-cycle-start").value = payCycleStartDate;
   document.getElementById("overtime-after").value = formatOvertimeAfter(parseNumber(document.getElementById("overtime-after").value, payRules.overtimeAfterHours));
   document.getElementById("overtime-rate").value = formatMultiplier(parseNumber(document.getElementById("overtime-rate").value, payRules.overtimeMultiplier));
@@ -6787,6 +6878,8 @@ function populatePayRuleInputs() {
   document.getElementById("sun-rate").value = formatMultiplier(payRules.sundayExtra + 1);
   document.getElementById("night-rate").value = formatPercent(payRules.nightLoading * 100);
   document.getElementById("after-hours-start").value = payRules.afterHoursStart;
+  document.getElementById("after-hours-end").value = payRules.afterHoursEnd || "";
+  document.getElementById("leave-hours-per-day").value = formatHours(payRules.leaveHoursPerDay) + " hours";
   document.getElementById("pay-cycle-start").value = payCycleStartDate;
   document.getElementById("overtime-after").value = formatOvertimeAfter(payRules.overtimeAfterHours);
   document.getElementById("overtime-rate").value = formatMultiplier(payRules.overtimeMultiplier);
@@ -6812,6 +6905,8 @@ function bindPayRuleFormatting() {
     "sun-rate",
     "night-rate",
     "after-hours-start",
+    "after-hours-end",
+    "leave-hours-per-day",
     "overtime-after",
     "overtime-rate",
     "default-break",
@@ -6978,6 +7073,7 @@ function renderCalendarDayStrip() {
     if (shift.start && shift.finish) parts.push(shift.start + "–" + shift.finish);
     if (Number(shift.hours) > 0) parts.push(formatHours(shift.hours) + " h");
     if (isCasualDay(day)) parts.push("Casual");
+    if (shift.type === "leave" && isLwopDay(day)) parts.push("LWOP");
     if (isHigherDutiesDay(day)) parts.push("Higher duties");
   } else {
     parts.push("No shift");
@@ -7102,7 +7198,9 @@ function loadDemoMonth() {
   const casualRoster = currentCasualRoster();
   const higherDutiesRoster = currentHigherDutiesRoster();
   const onCallRoster = currentOnCallRoster();
+  const lwopRoster = currentLwopRoster();
   const additionalHoursRoster = currentAdditionalHoursRoster();
+  Object.keys(lwopRoster).forEach((day) => delete lwopRoster[day]);
   Object.keys(roster).forEach((day) => delete roster[day]);
   Object.keys(casualRoster).forEach((day) => delete casualRoster[day]);
   Object.keys(higherDutiesRoster).forEach((day) => delete higherDutiesRoster[day]);
@@ -7131,7 +7229,9 @@ function clearMonth() {
       const casualRoster = currentCasualRoster();
       const higherDutiesRoster = currentHigherDutiesRoster();
       const onCallRoster = currentOnCallRoster();
+      const lwopRoster = currentLwopRoster();
       const additionalHoursRoster = currentAdditionalHoursRoster();
+      Object.keys(lwopRoster).forEach((day) => delete lwopRoster[day]);
       Object.keys(roster).forEach((day) => delete roster[day]);
       Object.keys(casualRoster).forEach((day) => delete casualRoster[day]);
       Object.keys(higherDutiesRoster).forEach((day) => delete higherDutiesRoster[day]);
@@ -7153,6 +7253,7 @@ function repeatFirstWeek() {
   const casualRoster = currentCasualRoster();
   const higherDutiesRoster = currentHigherDutiesRoster();
   const onCallRoster = currentOnCallRoster();
+  const lwopRoster = currentLwopRoster();
   const days = daysInCurrentMonth();
   for (let day = 8; day <= days; day += 1) {
     const source = roster[day - 7];
@@ -7164,7 +7265,10 @@ function repeatFirstWeek() {
       else delete higherDutiesRoster[day];
       if (onCallRoster[day - 7]) onCallRoster[day] = true;
       else delete onCallRoster[day];
+      if (lwopRoster[day - 7]) lwopRoster[day] = true;
+      else delete lwopRoster[day];
     } else {
+      delete lwopRoster[day];
       delete roster[day];
       delete casualRoster[day];
       delete higherDutiesRoster[day];
@@ -7244,6 +7348,7 @@ function syncEntryModifiersToSelectedDay() {
     casual: Boolean(current && isCasualDay(selectedEntryDay)),
     higherDuties: Boolean(current && isHigherDutiesDay(selectedEntryDay)),
     onCall: Boolean(isOnCallDay(selectedEntryDay)),
+    lwop: Boolean(current && current.type === "leave" && isLwopDay(selectedEntryDay)),
   };
   const casualInput = document.getElementById("casual-day");
   const higherDutiesInput = document.getElementById("higher-duties-day");
@@ -7251,6 +7356,17 @@ function syncEntryModifiersToSelectedDay() {
   if (casualInput) casualInput.checked = entryModifierState.casual;
   if (higherDutiesInput) higherDutiesInput.checked = entryModifierState.higherDuties;
   if (onCallInput) onCallInput.checked = entryModifierState.onCall;
+  const lwopInput = document.getElementById("lwop-day");
+  if (lwopInput) lwopInput.checked = entryModifierState.lwop;
+  syncLwopControlVisibility();
+}
+
+// Leave without pay only makes sense on a leave day, so the option is shown there only.
+function syncLwopControlVisibility() {
+  const label = document.getElementById("lwop-day-label");
+  if (!label) return;
+  const current = templates[getShiftKey(selectedEntryDay)];
+  label.classList.toggle("hidden-control", !(current && current.type === "leave"));
 }
 
 function selectEntryDay(day, options = {}) {
@@ -7264,7 +7380,7 @@ function selectEntryDay(day, options = {}) {
 function updateSelectedCount() {
   document.getElementById("selected-count").textContent = dayLabel(selectedEntryDay);
   const current = templates[getShiftKey(selectedEntryDay)];
-  document.getElementById("selected-shift-label").textContent = current ? current.label + (isCasualDay(selectedEntryDay) ? " · Casual" : "") + (isHigherDutiesDay(selectedEntryDay) ? " · Higher duties" : "") + (isOnCallDay(selectedEntryDay) ? " · On-call" : "") : (isOnCallDay(selectedEntryDay) ? "On-call" : "No shift");
+  document.getElementById("selected-shift-label").textContent = current ? current.label + (isCasualDay(selectedEntryDay) ? " · Casual" : "") + (isHigherDutiesDay(selectedEntryDay) ? " · Higher duties" : "") + (isOnCallDay(selectedEntryDay) ? " · On-call" : "") + (current.type === "leave" && isLwopDay(selectedEntryDay) ? " · LWOP" : "") : (isOnCallDay(selectedEntryDay) ? "On-call" : "No shift");
   const selectedHoliday = publicHolidayForDay(selectedEntryDay);
   const extra = getAdditionalHoursDay(selectedEntryDay);
   document.getElementById("selected-public-holiday").textContent = selectedHoliday ? "Public holiday: " + selectedHoliday : "";
@@ -7305,6 +7421,7 @@ function entryModifiers() {
   entryModifierState.casual = Boolean(document.getElementById("casual-day")?.checked);
   entryModifierState.higherDuties = Boolean(document.getElementById("higher-duties-day")?.checked);
   entryModifierState.onCall = Boolean(document.getElementById("on-call-day")?.checked);
+  entryModifierState.lwop = Boolean(document.getElementById("lwop-day")?.checked);
   return entryModifierState;
 }
 
@@ -7315,6 +7432,7 @@ function applyEntryModifiersToDay(day, shiftKey) {
   setCasualDay(day, isWorkShift && modifiers.casual);
   setHigherDutiesDay(day, isWorkShift && modifiers.higherDuties);
   setOnCallDay(day, isWorkShift && modifiers.onCall);
+  setLwopDay(day, Boolean(template) && template.type === "leave" && modifiers.lwop);
 }
 
 function applyEntryModifierCheckboxChange() {
@@ -7325,6 +7443,7 @@ function applyEntryModifierCheckboxChange() {
   setCasualDay(selectedEntryDay, isWorkShift && entryModifierState.casual);
   setHigherDutiesDay(selectedEntryDay, isWorkShift && entryModifierState.higherDuties);
   setOnCallDay(selectedEntryDay, entryModifierState.onCall);
+  setLwopDay(selectedEntryDay, Boolean(template) && template.type === "leave" && entryModifierState.lwop);
   saveState();
   renderCalendar();
   renderQuickGrid();
@@ -8214,6 +8333,12 @@ function resetAppData() {
     tone: "danger",
     onConfirm: () => {
       try {
+        // Resetting the app also signs this device out, so no saved login survives it.
+        appAuthSession.signOut();
+      } catch (error) {
+        console.warn("RosterBuddy reset sign-out failed.", error);
+      }
+      try {
         window.localStorage.removeItem(STORAGE_KEY);
         window.sessionStorage.removeItem(ACTIVE_SCREEN_STORAGE_KEY);
       } catch (error) {
@@ -8294,7 +8419,7 @@ function buildCalendarIcsForRange(range = activeShareRange()) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.2//EN",
+    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.3//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:RosterBuddy roster",
@@ -10667,6 +10792,7 @@ function bindNavigation() {
   document.getElementById("casual-day").addEventListener("change", applyEntryModifierCheckboxChange);
   document.getElementById("higher-duties-day").addEventListener("change", applyEntryModifierCheckboxChange);
   document.getElementById("on-call-day").addEventListener("change", applyEntryModifierCheckboxChange);
+  document.getElementById("lwop-day").addEventListener("change", applyEntryModifierCheckboxChange);
   document.getElementById("reset-app-data").addEventListener("click", resetAppData);
   document.getElementById("save-guided-setup").addEventListener("click", () => saveGuidedSetup());
   document.getElementById("complete-onboarding").addEventListener("click", completeOnboarding);
@@ -10721,7 +10847,7 @@ function cleanupOldAppCaches() {
   if (!("caches" in window)) return;
   caches.keys().then((keys) => Promise.all(
     keys
-      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-2")
+      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-3")
       .map((key) => caches.delete(key))
   )).catch((error) => {
     console.warn("RosterBuddy cache cleanup failed.", error);

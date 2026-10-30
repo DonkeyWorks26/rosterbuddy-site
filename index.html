@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#153447" />
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <title>RosterBuddy V0.2.2</title>
+    <title>RosterBuddy V0.2.3</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -207,6 +207,10 @@
                 <label class="toggle-row modifier-pill mod">
                   <input id="on-call-day" type="checkbox" />
                   <span>On-call</span>
+                </label>
+                <label class="toggle-row modifier-pill mod hidden-control" id="lwop-day-label">
+                  <input id="lwop-day" type="checkbox" />
+                  <span>Leave without pay (LWOP)</span>
                 </label>
                 <button class="secondary-button modifier-pill mod" id="toggle-additional-hours" type="button" aria-expanded="false" aria-controls="manual-hours-panel">+ Hours</button>
               </div>
@@ -453,6 +457,10 @@
                 <strong id="night-pay">$514</strong>
               </article>
               <article class="pr optional-row">
+                <span>Leave pay</span>
+                <strong id="leave-pay">$0</strong>
+              </article>
+              <article class="pr optional-row">
                 <span>Casual loading</span>
                 <strong id="casual-pay">$0</strong>
               </article>
@@ -566,16 +574,31 @@
                   <input id="sun-rate" inputmode="decimal" value="1.75x" />
                 </label>
               </div>
+              <div class="rule-group-heading compact-rule-note">
+                <strong>Night loading</strong>
+                <span>Loading applies to paid hours worked between these times, including after midnight. Leave "Until" blank to load from the start time until midnight only.</span>
+              </div>
               <div class="two-col">
                 <label>
-                  <span>After-hours loading</span>
+                  <span>Night loading</span>
                   <input id="night-rate" inputmode="decimal" value="0%" />
                 </label>
                 <label>
-                  <span>Starts after</span>
+                  <span>From</span>
                   <input id="after-hours-start" inputmode="decimal" value="19:00" />
                 </label>
               </div>
+              <div class="two-col">
+                <label>
+                  <span>Until</span>
+                  <input id="after-hours-end" inputmode="decimal" value="06:00" />
+                </label>
+                <label>
+                  <span>Leave hours per day</span>
+                  <input id="leave-hours-per-day" inputmode="decimal" value="7.6 hours" />
+                </label>
+              </div>
+              <p class="compact-disclaimer">Leave is paid automatically at this many hours a day at your base rate, unless the leave type has its own paid hours. Mark a leave day as LWOP in Edit shifts to leave it unpaid.</p>
               <div class="rule-group-heading compact-rule-note">
                 <strong>Manual public holidays</strong>
                 <span>Common Australian/Tasmanian public holidays are detected automatically. Add manual dates here for workplace, regional, or one-off exceptions.</span>
@@ -652,11 +675,11 @@
                 </label>
               </div>
               <label>
-                <span>Salary packaging per pay</span>
+                <span>Salary packaging per fortnight</span>
                 <input id="salary-sacrifice" inputmode="decimal" value="$0" />
               </label>
               <label>
-                <span>Meals &amp; Entertainment per pay</span>
+                <span>Meals &amp; Entertainment per fortnight</span>
                 <input id="meals-entertainment-sacrifice" inputmode="decimal" value="$0" />
                 <small>Tracks M&amp;E separately from ordinary salary packaging so the bank deposit and salary sacrifice value are clearer.</small>
               </label>
@@ -1051,7 +1074,7 @@
             </button>
             <button type="button" data-open="about">
               <span>About & support</span>
-              <strong>V0.2.2</strong>
+              <strong>V0.2.3</strong>
             </button>
           </section>
 
@@ -1194,7 +1217,7 @@
             <div><p class="eyebrow">About</p><h1>About RosterBuddy</h1></div>
           </div>
           <section class="notice beta-policy-card">
-            <strong>Version 0.2.2 — Build: RosterBuddy™ v0.2.2 Aesthetic Update.</strong>
+            <strong>Version 0.2.3 — Build: RosterBuddy™ v0.2.3 Aesthetic Update.</strong>
             <span>Package: com.donkeyworks.rosterbuddy. RosterBuddy™ is a local-first roster, pay-estimate, recovery-prompt, widget, and calendar-export prototype for shift workers.</span>
           </section>
           <section class="settings-list beta-checklist">
