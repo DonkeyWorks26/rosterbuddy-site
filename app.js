@@ -64,7 +64,7 @@ const TEMPLATE_OFF_TYPE_REPAIR_SCHEMA_VERSION = 2;
 // Version 3 merges back the built-in templates the old drifted key allowlist
 // had already deleted from installed state.
 const TEMPLATE_BUILT_IN_RESTORE_SCHEMA_VERSION = 3;
-const APP_VERSION = "0.2.6";
+const APP_VERSION = "0.2.11";
 const FIXED_CASUAL_LOADING = 0.25;
 const TEMPLATE_COLOURS = new Set(["aqua", "coral", "amber", "violet", "green", "blue", "pink", "slate", "red", "lime", "indigo", "mint", "gold", "plum", "orange"]);
 
@@ -370,7 +370,9 @@ const appAuthSession = Object.freeze({
     : ({ authenticated: false, offline: true, gate: false, mode: "offline" }),
   accessToken: () => window.RosterBuddyLegacyMagicLink && typeof window.RosterBuddyLegacyMagicLink.accessToken === "function"
     ? window.RosterBuddyLegacyMagicLink.accessToken() : Promise.resolve(null),
-  requestMagicLink: (email) => window.RosterBuddyLegacyMagicLink.requestMagicLink(email, false),
+  // shouldCreateUser is true: a person invited to a group may have no account yet (no Google account either),
+  // and a false flag makes the server refuse their sign-in email. The emailed link still has to be opened.
+  requestMagicLink: (email) => window.RosterBuddyLegacyMagicLink.requestMagicLink(email, true),
   googleSignInAvailable: () => Boolean(window.RosterBuddyLegacyMagicLink && typeof window.RosterBuddyLegacyMagicLink.googleSignInAvailable === "function"
     && window.RosterBuddyLegacyMagicLink.googleSignInAvailable()),
   startGoogleSignIn: () => window.RosterBuddyLegacyMagicLink.startGoogleSignIn(),
@@ -615,9 +617,9 @@ function applyStatePayload(saved) {
   const payCycleStateMigrated = migratePayCycleState(saved);
   stateMigrated = payCycleStateMigrated || stateMigrated;
   if (payPeriods[saved.selectedPayPeriod]) selectedPayPeriod = saved.selectedPayPeriod;
-  // The compact timed legend is part of the fixed Calendar layout, so it always
-  // starts expanded; the toggle only hides it for the current session.
-  calendarDetailsCollapsed = false;
+  // The legend can be minimised to give the calendar grid more room; the
+  // choice is remembered between launches. Anything but `true` means expanded.
+  calendarDetailsCollapsed = saved.calendarDetailsCollapsed === true;
   if (typeof saved.selectedTheme === "string") {
     const normalizedTheme = normalizeTheme(saved.selectedTheme);
     stateMigrated = stateMigrated || normalizedTheme !== saved.selectedTheme;
@@ -7010,12 +7012,18 @@ function renderCalendar(direction = 0) {
     button.classList.toggle("today", isCurrentDate);
     button.classList.toggle("holiday", Boolean(holiday));
     const calendarCode = shift ? calendarShiftCode(shiftKey, shift) : "";
-    const markerHtml = (shift || onCall || extraHours) && (casual || higherDuties || onCall || extraHours)
-      ? "<span class=\"calendar-marker-row\">" + (casual ? "<i class=\"casual-pill\">CAS</i>" : "") + (higherDuties ? "<i class=\"on-call-pill\">HD</i>" : "") + (onCall ? "<i class=\"on-call-pill\">OC</i>" : "") + (extraHours ? "<i class=\"on-call-pill\">+H</i>" : "") + "</span>"
+    // One line of markers has ~40px in a day cell. Five or more characters of full labels
+    // (e.g. CAS+HD, or three markers) would not fit, so those days use single letters.
+    const markerLabels = [casual && ["CAS", "C", "casual-pill"], higherDuties && ["HD", "H", "on-call-pill"], onCall && ["OC", "O", "on-call-pill"], extraHours && ["+H", "+", "on-call-pill"]].filter(Boolean);
+    const markerCount = markerLabels.length;
+    const markerShort = markerLabels.reduce((total, label) => total + label[0].length, 0) >= 5;
+    const markerHtml = (shift || onCall || extraHours) && markerCount
+      ? "<span class=\"calendar-marker-row\">" + markerLabels.map((label) => "<i class=\"" + label[2] + "\">" + label[markerShort ? 1 : 0] + "</i>").join("") + "</span>"
       : "";
     const calendarTextHtml = calendarCode ? "<em class=\"calendar-main-marker\">" + escapeHtml(calendarCode) + "</em>" : "";
     button.innerHTML = "<strong>" + day + "</strong>" + (note ? "<i class=\"nd\" aria-hidden=\"true\"></i>" : "") +
-      (shift ? "<span class=\"badge " + shift.colour + (markerHtml ? " has-markers" : "") + "\">" + calendarTextHtml + markerHtml + "</span>" : (markerHtml ? "<span class=\"day-meta note-meta\">" + markerHtml + "</span>" : "")) +
+      (markerHtml ? "<i class=\"mk-dot\" aria-hidden=\"true\"></i>" : "") +
+      (shift ? "<span class=\"badge " + shift.colour + (markerHtml ? " has-markers mk-" + markerCount : "") + "\">" + calendarTextHtml + markerHtml + "</span>" : (markerHtml ? "<span class=\"day-meta note-meta\">" + markerHtml + "</span>" : "")) +
       (holiday ? "<span class=\"day-meta holiday-meta\">" + escapeHtml(holiday) + "</span>" : "") +
       (reminder ? "<span class=\"day-meta reminder-meta\">🔔 " + escapeHtml(reminder.text) + "</span>" : "");
     button.addEventListener("click", () => {
@@ -7116,7 +7124,7 @@ function renderSharedCalendar(grid, direction) {
     const entries = byDay[day] || [];
     button.classList.toggle("today", sameLocalDate(dayDate(day), new Date()));
     button.classList.toggle("entry-target", calendarViewSelectedDay === day);
-    const chips = entries.slice(0, 3).map((entry) => "<i class=\"shared-chip\">" + escapeHtml(model.memberInitial(entry.displayName)) + escapeHtml(entry.shiftCode || "•") + "</i>").join("");
+    const chips = entries.slice(0, 3).map((entry) => "<i class=\"shared-chip " + sharedMemberClass(entry.sourceUserId) + "\">" + escapeHtml(model.memberInitial(entry.displayName)) + escapeHtml(entry.shiftCode || "•") + "</i>").join("");
     const more = entries.length > 3 ? "<i class=\"shared-chip shared-more\">+" + (entries.length - 3) + "</i>" : "";
     button.innerHTML = "<strong>" + day + "</strong><span class=\"shared-chips\">" + chips + more + "</span>";
     // Read-only: tapping only reveals who is on that day. It never opens entry screens.
@@ -7140,12 +7148,19 @@ function renderSharedCalendar(grid, direction) {
   }
 }
 
+// Each person on the group calendar keeps one of six colours, in the order they are listed, so a name and its chips match.
+function sharedMemberClass(id) {
+  const members = (calendarViewProjection && calendarViewProjection.members) || [];
+  const index = members.findIndex((member) => member.id === id);
+  return "member-c" + (index < 0 ? 0 : index % 6);
+}
+
 function renderSharedCalendarFilters() {
   const host = document.getElementById("calendar-shared-filters");
   if (!host) return;
   const members = (calendarViewProjection && calendarViewProjection.members) || [];
-  host.innerHTML = members.length > 1
-    ? members.map((member) => "<button type=\"button\" class=\"shared-filter" + (calendarViewFilter == null || calendarViewFilter.has(member.id) ? " active" : "") + "\" data-shared-member=\"" + escapeHtml(member.id) + "\" aria-pressed=\"" + String(calendarViewFilter == null || calendarViewFilter.has(member.id)) + "\">" + escapeHtml(member.name) + "</button>").join("")
+  host.innerHTML = members.length >= 1
+    ? members.map((member) => "<button type=\"button\" class=\"shared-filter " + sharedMemberClass(member.id) + (calendarViewFilter == null || calendarViewFilter.has(member.id) ? " active" : "") + "\" data-shared-member=\"" + escapeHtml(member.id) + "\" aria-pressed=\"" + String(calendarViewFilter == null || calendarViewFilter.has(member.id)) + "\">" + escapeHtml(member.name) + "</button>").join("")
     : "";
 }
 
@@ -7180,7 +7195,8 @@ function renderCalendarLegend() {
     if (!shift) continue;
     const code = calendarShiftCode(shiftKey, shift);
     const name = String(shift.label || "").trim();
-    const entry = counts.get(shiftKey) || { label: (code || name) + (code && name && name.toUpperCase() !== code.toUpperCase() ? " " + name : ""), time: shift.start && shift.finish ? templateTimeText(shift).replace(" - ", "–") : "", colour: shift.colour, count: 0 };
+    const extraName = code && name && name.toUpperCase() !== code.toUpperCase() ? name : "";
+    const entry = counts.get(shiftKey) || { label: (code || name) + (extraName ? " " + extraName : ""), code: code || name, name: extraName, time: shift.start && shift.finish ? templateTimeText(shift).replace(" - ", "–") : "", colour: shift.colour, count: 0 };
     entry.count += 1;
     counts.set(shiftKey, entry);
   }
@@ -7192,8 +7208,8 @@ function renderCalendarLegend() {
   container.classList.remove("hidden-control");
   container.innerHTML = Array.from(counts.values())
     .sort((a, b) => b.count - a.count)
-    .map((entry) => "<span class=\"legend-chip " + entry.colour + "\">" + escapeHtml(entry.label) + (entry.time ? " <em>(" + escapeHtml(entry.time) + ")</em>" : "") + "<b class=\"legend-count\"> " + entry.count + "</b></span>")
-    .join("") + "<span class=\"legend-chip legend-cycle\">Shaded: this pay cycle</span>";
+    .map((entry) => "<span class=\"legend-chip " + entry.colour + "\">" + "<span class=\"legend-label\"><span class=\"legend-code\">" + escapeHtml(entry.code) + "</span>" + (entry.name ? "<span class=\"legend-name\"> " + escapeHtml(entry.name) + "</span>" : "") + "</span>" + (entry.time ? " <em>(" + escapeHtml(entry.time) + ")</em>" : "") + "<b class=\"legend-count\"> " + entry.count + "</b></span>")
+    .join("") + "<span class=\"legend-chip legend-cycle\"><span class=\"legend-label\">Shaded: pay cycle</span></span>";
 }
 
 function loadDemoMonth() {
@@ -7372,8 +7388,35 @@ function syncLwopControlVisibility() {
   label.classList.toggle("hidden-control", !(current && current.type === "leave"));
 }
 
+// Moving to another day must not drop what was typed for the day being left:
+// +Hours is normally saved on blur/change, and an open note editor holds text
+// that only Save note would keep. Both are committed before the day changes.
+function commitPendingEntryInputs() {
+  // Read the note first: saving hours ends in updateSelectedCount(), which
+  // resets the note field to the stored value.
+  const editor = document.getElementById("day-note-editor");
+  const noteOpen = Boolean(editor) && !editor.classList.contains("hidden-control");
+  const typedNote = noteOpen ? document.getElementById("day-note-text").value : "";
+  saveSelectedDayAdditionalHours();
+  if (noteOpen) {
+    setDayNote(selectedEntryDay, typedNote);
+    setDayNoteEditing(false);
+  }
+}
+
+function dayLabelWithWeekday(day) {
+  return new Intl.DateTimeFormat("en-AU", { weekday: "short", day: "numeric", month: "short" }).format(dayDate(day));
+}
+
+function stepEntryDay(delta) {
+  const target = selectedEntryDay + delta;
+  if (target < 1 || target > daysInCurrentMonth()) return;
+  selectEntryDay(target);
+}
+
 function selectEntryDay(day, options = {}) {
-  selectedEntryDay = Math.max(1, Math.min(daysInCurrentMonth(), Number(day) || 1));
+  commitPendingEntryInputs();
+  selectedEntryDay =Math.max(1, Math.min(daysInCurrentMonth(), Number(day) || 1));
   if (options.syncModifiers !== false) syncEntryModifiersToSelectedDay();
   renderQuickGrid();
   renderShiftPicker();
@@ -7381,7 +7424,9 @@ function selectEntryDay(day, options = {}) {
 }
 
 function updateSelectedCount() {
-  document.getElementById("selected-count").textContent = dayLabel(selectedEntryDay);
+  document.getElementById("selected-count").textContent = dayLabelWithWeekday(selectedEntryDay);
+  document.getElementById("quick-prev-day").disabled = selectedEntryDay <= 1;
+  document.getElementById("quick-next-day").disabled = selectedEntryDay >= daysInCurrentMonth();
   const current = templates[getShiftKey(selectedEntryDay)];
   document.getElementById("selected-shift-label").textContent = current ? current.label + (isCasualDay(selectedEntryDay) ? " · Casual" : "") + (isHigherDutiesDay(selectedEntryDay) ? " · Higher duties" : "") + (isOnCallDay(selectedEntryDay) ? " · On-call" : "") + (current.type === "leave" && isLwopDay(selectedEntryDay) ? " · LWOP" : "") : (isOnCallDay(selectedEntryDay) ? "On-call" : "No shift");
   const selectedHoliday = publicHolidayForDay(selectedEntryDay);
@@ -7477,6 +7522,7 @@ function saveQuickEntryAndReturn() {
 }
 
 function applySelectedShiftToDay(day, shiftKey) {
+  commitPendingEntryInputs();
   setShiftKey(day, shiftKey);
   applyEntryModifiersToDay(day, shiftKey);
   selectedEntryDay = Math.min(daysInCurrentMonth(), day + 1);
@@ -7520,7 +7566,7 @@ function renderShiftPicker() {
     const detail = template.start && template.finish ? templateTimeText(template).replace(" - ", "–") : "";
     const paid = Number(template.hours) > 0 ? formatHours(template.hours) + " h paid" : "";
     chip.innerHTML = "<span class=\"cbadge badge " + template.colour + "\">" + escapeHtml(template.icon || template.label.slice(0, 2)) + "</span>" +
-      "<span class=\"tx\"><span class=\"t\">" + escapeHtml(template.label) + "</span><span class=\"s\">" + escapeHtml([detail, paid].filter(Boolean).join(" · ") || subLabel || "No shift times") + "</span></span>" +
+      "<span class=\"tx\"><span class=\"t\">" + escapeHtml(template.label) + "</span><span class=\"s\">" + escapeHtml(detail || paid || subLabel || "No shift times") + (detail && paid ? "<span class=\"paid\"> · " + escapeHtml(paid) + "</span>" : "") + "</span></span>" +
       "<span class=\"ck\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg></span>";
     chip.addEventListener("click", () => {
       selectedShift = key;
@@ -7783,6 +7829,8 @@ function applyMonthChange(delta) {
   renderQuickGrid();
   updateSelectedCount();
   updatePayDisplay();
+  // A shared roster is fetched one month at a time; tell the sharing UI which month is now showing.
+  if (calendarViewProjection && typeof window.RosterBuddyCalendarMonthChanged === "function") window.RosterBuddyCalendarMonthChanged(monthKey());
 }
 
 function handleMonthSwipe(startX, startY, endX, endY) {
@@ -7918,7 +7966,7 @@ function updateRecoveryDisplay() {
   if (!ring) return;
 
   document.getElementById("recovery-score").textContent = String(Math.round(safeScore));
-  ring.style.background = "conic-gradient(var(--coral) 0 " + safeScore + "%, var(--ring-track, #e8eef0) " + safeScore + "% 100%)";
+  ring.style.background = "conic-gradient(var(--coral) 0 " + safeScore + "%, #e8eef0 " + safeScore + "% 100%)";
 
   if (stats.workEntries.length === 0) {
     document.getElementById("recovery-risk").textContent = "No roster data";
@@ -8422,7 +8470,7 @@ function buildCalendarIcsForRange(range = activeShareRange()) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.6//EN",
+    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.11//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:RosterBuddy roster",
@@ -10685,6 +10733,8 @@ function bindNavigation() {
   document.getElementById("additional-hours-day").addEventListener("change", saveSelectedDayAdditionalHours);
   document.getElementById("additional-hours-double-time").addEventListener("change", saveSelectedDayAdditionalHours);
   document.getElementById("undo-entry").addEventListener("click", undoStep);
+  document.getElementById("quick-prev-day").addEventListener("click", () => stepEntryDay(-1));
+  document.getElementById("quick-next-day").addEventListener("click", () => stepEntryDay(1));
   document.getElementById("recovery-alert-toggle").addEventListener("click", toggleRecoveryAlerts);
   document.getElementById("save-reminder").addEventListener("click", saveReminder);
   document.getElementById("clear-reminder").addEventListener("click", clearReminder);
@@ -10850,7 +10900,7 @@ function cleanupOldAppCaches() {
   if (!("caches" in window)) return;
   caches.keys().then((keys) => Promise.all(
     keys
-      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-6")
+      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-11")
       .map((key) => caches.delete(key))
   )).catch((error) => {
     console.warn("RosterBuddy cache cleanup failed.", error);
@@ -10858,6 +10908,7 @@ function cleanupOldAppCaches() {
 }
 
 window.currentStatePayload = currentStatePayload;
+window.RosterBuddyViewedMonthKey = () => monthKey();
 window.RosterBuddyGetLocalRoster = () => ({ roster: JSON.parse(JSON.stringify(rosters)), templates: JSON.parse(JSON.stringify(templates)) });
 // Read-only member-labelled view. Rows are copied through the allowlisting model
 // into calendarViewProjection; nothing is written to templates, rosters or saved

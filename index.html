@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#153447" />
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <title>RosterBuddy V0.2.6</title>
+    <title>RosterBuddy V0.2.11</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -183,18 +183,22 @@
           </div>
 
           <div class="scroll">
-            <div class="week" id="quick-week" role="group" aria-label="Choose a day"></div>
+            <div class="quick-day-bar">
+              <div class="week" id="quick-week" role="group" aria-label="Choose a day"></div>
 
-            <div class="quick-selected-summary dayhead">
-              <h2 id="selected-count">0 dates</h2>
-              <span class="sub" id="selected-shift-label">No shift</span>
+              <div class="quick-selected-summary dayhead">
+                <button class="icon-button icon-btn quick-day-step" type="button" id="quick-prev-day" aria-label="Previous day"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+                <div class="dayhead-text">
+                  <h2 id="selected-count">0 dates</h2>
+                  <span class="sub" id="selected-shift-label">No shift</span>
+                </div>
+                <button class="icon-button icon-btn quick-day-step" type="button" id="quick-next-day" aria-label="Next day"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+              </div>
+              <p id="selected-public-holiday" class="day-detail-note"></p>
             </div>
-            <p id="selected-public-holiday" class="day-detail-note"></p>
-
-            <section class="shift-picker choices" id="shift-picker" role="radiogroup" aria-label="Shift"></section>
 
             <div class="quick-entry-panel">
-              <p class="group-label">Modifiers</p>
+              <p class="group-label">Modifiers for this day</p>
               <div class="quick-modifier-row mods" aria-label="Entry modifiers">
                 <label class="toggle-row modifier-pill mod">
                   <input id="casual-day" type="checkbox" />
@@ -226,6 +230,9 @@
               </label>
               <small>Manual extra hours. Double time pays base rate × 2 only.</small>
             </div>
+
+            <p class="group-label">Shift <span class="group-hint">Tap a shift to save it and move to the next day</span></p>
+            <section class="shift-picker choices" id="shift-picker" role="radiogroup" aria-label="Shift"></section>
 
             <section class="reminder-panel day-note-panel panelbox notebox" id="day-note-box" aria-label="Day note">
               <div class="notesrow" id="day-note-row">
@@ -772,33 +779,48 @@
           </div>
 
           <section class="theme-card sharing-card" aria-labelledby="sharing-title">
-            <p class="eyebrow">Sharing</p>
-            <h2 id="sharing-title">Share rosters with your people</h2>
-            <p class="muted">Create a group, invite people, and keep shared schedules together. Your personal calendar stays separate.</p>
-            <div class="sharing-account-note"><small id="sharing-account-note" class="muted">Sign-in lives in Settings &gt; Account. Your rosters stay on this device unless you choose sharing.</small><button class="secondary-button compact" id="sharing-open-account" type="button" data-open="settings">Open Account settings</button></div>
-            <section class="sharing-section" id="sharing-profile" aria-label="Your name in groups"><label><span>Name your group sees</span><input id="sharing-display-name" maxlength="60" autocomplete="nickname" placeholder="e.g. Sam" /></label><button class="secondary-button compact" id="sharing-save-display-name" type="button">Save name</button><small class="muted">Shown next to your shifts. Never your email address.</small></section>
+            <h2 id="sharing-title">Share with your people</h2>
+            <p class="muted">Pick a group, switch sharing on, and everyone in it sees your shift days. Your personal calendar stays separate, and your pay, notes and times stay private.</p>
+            <div class="sharing-account-note"><small id="sharing-account-note" class="muted">Sign-in lives in Settings &gt; Account.</small><button class="secondary-button compact" id="sharing-open-account" type="button" data-open="settings">Sign in</button></div>
+            <p id="group-session-status" class="notice" role="status" aria-live="polite">Checking sharing session…</p>
+            <label class="sharing-name-row" id="sharing-profile"><span>Your name in groups</span><input id="sharing-display-name" maxlength="40" autocomplete="nickname" placeholder="e.g. Sam" /><small class="muted">Shown next to your shifts. Never your email.</small></label>
+            <button class="secondary-button compact hidden-control" id="sharing-save-display-name" type="button">Save name</button>
             <section id="sharing-group-hub" class="sharing-section" aria-labelledby="sharing-groups-title">
-              <div class="sharing-section-heading"><div><p class="eyebrow">Your groups</p><strong id="sharing-groups-title">Groups</strong></div><span id="sharing-group-status" class="muted">No group yet</span></div>
+              <div class="sharing-section-heading"><strong id="sharing-groups-title">Your groups</strong><span id="sharing-group-status" class="muted">No group yet</span></div>
               <p id="sharing-hub-state" class="notice" role="status" aria-live="polite">Loading your groups…</p>
               <button class="secondary-button compact hidden-control" id="sharing-hub-retry" type="button">Try again</button>
               <div id="sharing-group-list" class="settings-list" aria-label="Your groups"></div>
               <button class="text-button hidden-control" id="sharing-new-group" type="button">Create another group</button>
-              <div id="sharing-no-group" class="sharing-empty-state"><p class="muted">Start a group to share a read-only roster with the people you choose.</p><div class="form-stack"><label><span>Group name</span><input id="group-name" placeholder="Our household" /></label><button class="primary-button" id="group-create" type="button">Create group</button></div></div>
-              <article id="sharing-selected-group" class="sharing-group-card hidden-control"><div><strong id="sharing-selected-group-name">Shared roster</strong><span id="sharing-selected-group-meta" class="muted">Ready to share</span></div><div class="two-col"><button class="primary-button" id="sharing-open-group" type="button">View shared roster</button><button class="secondary-button" id="sharing-invite-people" type="button">Invite people</button></div></article>
+              <div id="sharing-no-group" class="sharing-empty-state"><div class="form-stack"><label><span>Group name</span><input id="group-name" placeholder="e.g. Our household" /></label><button class="primary-button" id="group-create" type="button">Create group</button></div><p class="muted">Got an invite? Open any group, or paste it under "Invite someone".</p></div>
+              <article id="sharing-selected-group" class="sharing-group-card hidden-control"><div><strong id="sharing-selected-group-name">Shared roster</strong><span id="sharing-selected-group-meta" class="muted">Ready to share</span></div><div class="two-col"><button class="primary-button" id="sharing-open-group" type="button">Open group</button><button class="secondary-button" id="sharing-invite-people" type="button">Invite someone</button></div></article>
             </section>
-            <button class="secondary-button full" type="button" data-open="share-export">Send a summary</button>
             <section id="sharing-group-detail" class="sharing-section hidden-control" aria-labelledby="sharing-detail-title">
-              <div class="sharing-detail-header"><button class="text-button" id="sharing-back-to-groups" type="button">← Your groups</button><span class="eyebrow">Group</span></div>
+              <div class="sharing-detail-header"><button class="text-button" id="sharing-back-to-groups" type="button">← Groups</button></div>
               <h3 id="sharing-detail-title">Shared roster</h3>
               <p id="sharing-detail-meta" class="muted"></p>
-              <ul id="sharing-permissions" class="muted sharing-permissions"></ul>
-              <div class="two-col"><button class="primary-button" id="sharing-view-group-calendar" type="button">View group calendar</button><button class="secondary-button" id="sharing-refresh-group" type="button">Refresh</button></div>
-              <div id="group-roster-preview" class="share-preview-card" aria-live="polite"></div>
-              <div class="theme-card sharing-section" id="sharing-people"><div class="sharing-section-heading"><div><p class="eyebrow">People</p><strong>People in this group</strong></div><span class="muted">Connected</span></div><div id="group-members" class="settings-list"></div></div>
-              <div class="theme-card sharing-section" id="sharing-invite"><div class="sharing-section-heading"><div><p class="eyebrow">Invite people</p><strong>Add someone to this group</strong></div><button class="text-button" id="sharing-invite-panel-toggle" type="button">Show invite options</button></div><div id="sharing-invite-panel" class="form-stack hidden-control"><label><span>Email</span><input id="group-invite-email" type="email" autocomplete="off" placeholder="person@example.com" /></label><label><span>Invite link or code</span><input id="group-invite-token" placeholder="Paste a fresh invite link or code" /></label><div class="two-col"><button class="secondary-button" id="group-invite" type="button">Create invite</button><button class="secondary-button" id="group-share-invite" type="button">Share invite</button><button class="primary-button" id="group-accept" type="button">Connect</button></div></div><p id="group-invite-output" class="muted" aria-live="polite"></p></div>
-              <div class="theme-card sharing-section" id="sharing-what-i-share"><p class="eyebrow">What I share</p><label class="toggle-row"><input id="group-sync-consent" type="checkbox" /><span>I consent to share my allowlisted schedule with this group.</span></label><button class="secondary-button" id="group-enable-sync" type="button">Save sharing permission</button><small id="group-sync-status">Cloud sync is controlled in Settings.</small><label class="toggle-row"><input id="sharing-reciprocal-consent" type="checkbox" /><span>I consent to share my allowlisted schedule with a connected person after they accept.</span></label><button class="secondary-button" id="sharing-reciprocal-enable" type="button">Request schedule sharing</button><small>Sharing starts only after the connected person accepts. Nothing is shared with them before then.</small></div>
-              <p id="group-session-status" class="notice" role="status">Checking sharing session…</p>
+              <div class="sharing-switch-card" id="sharing-what-i-share">
+                <label class="sharing-switch"><span class="sharing-switch-text"><strong>Share my roster</strong><small id="group-sync-status" class="muted">Everyone in this group sees your shift days and codes.</small></span><input id="group-sync-consent" type="checkbox" role="switch" /></label>
+                <button class="secondary-button compact hidden-control" id="group-enable-sync" type="button">Save sharing permission</button>
+              </div>
+              <div class="two-col"><button class="primary-button" id="sharing-view-group-calendar" type="button">View calendar</button><button class="secondary-button" id="sharing-invite-panel-toggle" type="button">Invite someone</button></div>
+              <div id="sharing-invite-panel" class="sharing-invite-card form-stack hidden-control">
+                <strong>Invite someone</strong>
+                <label><span>Their email</span><input id="group-invite-email" type="email" autocomplete="off" placeholder="person@example.com" /></label>
+                <div class="two-col"><button class="primary-button" id="group-invite" type="button">Create invite</button><button class="secondary-button" id="group-share-invite" type="button">Send invite</button></div>
+                <p id="group-invite-output" class="muted" aria-live="polite"></p>
+                <label><span>Got an invite? Paste it here</span><input id="group-invite-token" placeholder="Paste the invite link" /></label>
+                <button class="secondary-button" id="group-accept" type="button">Join with invite</button>
+              </div>
+              <div class="sharing-people" id="sharing-people"><div id="group-members" class="settings-list"></div></div>
+              <details class="sharing-more"><summary>More</summary>
+                <div class="two-col"><button class="secondary-button" id="sharing-refresh-group" type="button">Refresh</button></div>
+                <ul id="sharing-permissions" class="muted sharing-permissions"></ul>
+                <div id="group-roster-preview" class="share-preview-card" aria-live="polite"></div>
+                <label class="toggle-row hidden-control"><input id="sharing-reciprocal-consent" type="checkbox" /><span>Share with a connected person after they accept.</span></label>
+                <button class="secondary-button hidden-control" id="sharing-reciprocal-enable" type="button">Request schedule sharing</button>
+              </details>
             </section>
+            <button class="secondary-button full" type="button" data-open="share-export">Send a summary</button>
           </section>
 
           <section class="share-picker" aria-label="Share range options">
@@ -1075,7 +1097,7 @@
             </button>
             <button type="button" data-open="about">
               <span>About & support</span>
-              <strong>V0.2.6</strong>
+              <strong>V0.2.11</strong>
             </button>
           </section>
 
@@ -1218,7 +1240,7 @@
             <div><p class="eyebrow">About</p><h1>About RosterBuddy</h1></div>
           </div>
           <section class="notice beta-policy-card">
-            <strong>Version 0.2.6 — Build: RosterBuddy™ v0.2.6 Aesthetic Update.</strong>
+            <strong>Version 0.2.11 — Build: RosterBuddy™ v0.2.11 Simple Sharing.</strong>
             <span>Package: com.donkeyworks.rosterbuddy. RosterBuddy™ is a local-first roster, pay-estimate, recovery-prompt, widget, and calendar-export prototype for shift workers.</span>
           </section>
           <section class="settings-list beta-checklist">

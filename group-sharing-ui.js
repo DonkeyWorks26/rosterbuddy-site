@@ -44,6 +44,11 @@
   let calendarGroupId = null;
   let lastUploadKey = '';
   let refreshInFlight = false;
+  // Owner roster upload bookkeeping: upload only when the roster actually changed, one at a time, and back off after a failure.
+  let rosterUploadKey = '';
+  let rosterUploadInFlight = false;
+  let rosterUploadRetryAt = 0;
+  let realtimeTimer = null;
 
   function appAuth() { return window.RosterBuddyCurrentAuth || null; }
   function offlineNow() { return typeof navigator !== 'undefined' && navigator.onLine === false; }
@@ -133,6 +138,8 @@
     clearSharedCalendar();
     mySharing = [];
     lastUploadKey = '';
+    rosterUploadKey = '';
+    rosterUploadRetryAt = 0;
     hubRequestId += 1;
     hubState = { status: 'loading', groups: [], error: '' };
     selectGroup(null);
@@ -152,6 +159,7 @@
     hubState.groups = hubState.groups.filter((candidate) => String(candidate.id) !== String(groupId));
     mySharing = [];
     lastUploadKey = '';
+    rosterUploadKey = '';
     if (selectedGroupId === groupId) selectGroup(null);
     // The detail pane must not keep showing the people or schedule of a group
     // this device can no longer read.
@@ -248,11 +256,68 @@
   function switcherGroups() {
     return adapter.status && adapter.status().mode === 'cloud' ? hubState.groups : Object.values(store.groups);
   }
+  // Sharing is per group and explicit: nothing about a person's roster is uploaded to a group until they have
+  // chosen to share with it on this device (the group creator's choice is made by creating the group).
+  const GROUP_SHARE_STORAGE = 'rosterbuddy.groupShare.v1';
+  const DISPLAY_NAME_STORAGE = 'rosterbuddy.groupDisplayName.v1';
+  function readJsonMap(key) {
+    try { const value = JSON.parse(localStorage.getItem(key) || '{}'); return value && typeof value === 'object' ? value : {}; } catch (_) { return {}; }
+  }
+  function groupShareOn(userId, groupId) { return Boolean(userId && groupId) && readJsonMap(GROUP_SHARE_STORAGE)[`${userId}:${groupId}`] === true; }
+  function setGroupShare(userId, groupId, on) {
+    if (!userId || !groupId) return;
+    const map = readJsonMap(GROUP_SHARE_STORAGE);
+    if (on) map[`${userId}:${groupId}`] = true; else delete map[`${userId}:${groupId}`];
+    try { localStorage.setItem(GROUP_SHARE_STORAGE, JSON.stringify(map)); } catch (_) {}
+  }
+  function savedDisplayName(userId) { const value = readJsonMap(DISPLAY_NAME_STORAGE)[userId]; return typeof value === 'string' ? value : ''; }
+  function saveDisplayName(userId, name) {
+    const map = readJsonMap(DISPLAY_NAME_STORAGE); map[userId] = name;
+    try { localStorage.setItem(DISPLAY_NAME_STORAGE, JSON.stringify(map)); } catch (_) {}
+  }
+  // Best effort: a person who has chosen a name gets it in every group they join or create.
+  async function applySavedDisplayName(groupId, current) {
+    const name = savedDisplayName(current.id);
+    if (!name || !adapter.setDisplayName || !adapter.status || adapter.status().mode !== 'cloud') return;
+    try { await Promise.resolve(adapter.setDisplayName(groupId, name)); } catch (_) { /* the name can be set again from the group screen */ }
+  }
+  // Stop sharing with a group: record the choice first, then remove what was uploaded.
+  async function withdrawSharing(group, current) {
+    setGroupShare(current.id, group.id, false);
+    rosterUploadKey = '';
+    try {
+      await Promise.resolve(adapter.stopSharing(group.id));
+      return { ok: true, message: `Stopped sharing with ${group.name || 'this group'}. Your shifts were removed from it.` };
+    } catch (error) {
+      return { ok: false, message: `Sharing is off, but your shifts could not be removed from the group right now. Switch sharing on and off again to retry. ${error.message || ''}`.trim() };
+    }
+  }
+  // What the live Sandbox supports; the reciprocal/consent RPCs are not deployed there, so their controls stay hidden.
+  function reciprocalSupported() {
+    return Boolean(adapter.capabilities && adapter.capabilities().reciprocalSharing === true);
+  }
+  function applyCapabilityVisibility(cloud) {
+    const show = !cloud || reciprocalSupported();
+    const button = el('sharing-reciprocal-enable');
+    if (button) button.classList.toggle('hidden-control', !show);
+    const consent = el('sharing-reciprocal-consent');
+    const row = consent && typeof consent.closest === 'function' ? consent.closest('label') : null;
+    const target = row || consent;
+    if (target) target.classList.toggle('hidden-control', !show);
+  }
+  // The shared calendar is read one month at a time (the server limits a read to 62 days).
+  function viewedMonthRange() {
+    const key = typeof window.RosterBuddyViewedMonthKey === 'function' ? window.RosterBuddyViewedMonthKey() : '';
+    const match = /^(\d{4})-(\d{2})$/.exec(String(key));
+    if (!match) return undefined;
+    const last = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate();
+    return { from: `${key}-01`, to: `${key}-${String(last).padStart(2, '0')}` };
+  }
   // Cloud: the combined, member-labelled projection (fails closed). Local: the
   // single local roster, labelled with the group name.
   async function loadGroupRows(group, current) {
     const cloud = adapter.status && adapter.status().mode === 'cloud';
-    if (cloud) return Promise.resolve(adapter.readGroupSchedule(group.id));
+    if (cloud) return Promise.resolve(adapter.readGroupSchedule(group.id, viewedMonthRange()));
     const rows = await Promise.resolve(adapter.readSharedRoster(group.id, current.id));
     return rows.map((row) => Object.assign({}, row, { sourceUserId: group.ownerId || 'local', displayName: group.name || 'Shared roster' }));
   }
@@ -293,7 +358,8 @@
     if (!group) return;
     try { await showGroupCalendar(group, current); }
     catch (error) {
-      if (isAccessError(error) || !isTransientError(error)) { handleAccessLost(groupId); }
+      // Only a server answer that says access ended removes the group; a wiring or input error must not.
+      if (isAccessError(error)) handleAccessLost(groupId);
       throw error;
     }
   }
@@ -303,7 +369,7 @@
     if (!current || !group) throw new Error('Open a group first.');
     try { await showGroupCalendar(group, current, onlyUserId); }
     catch (error) {
-      if (isAccessError(error) || !isTransientError(error)) handleAccessLost(group.id);
+      if (isAccessError(error)) handleAccessLost(group.id);
       throw error;
     }
     if (typeof showScreen === 'function') showScreen('calendar');
@@ -321,23 +387,27 @@
       window.RosterBuddySetCalendarView(rows, group.name || 'Shared roster');
       if (state.filter && window.RosterBuddySetCalendarMemberFilter) window.RosterBuddySetCalendarMemberFilter(state.filter);
     } catch (error) {
-      if (isTransientError(error)) { setStatus('Could not refresh the group calendar. Showing the last loaded schedule.', true); return; }
-      handleAccessLost(group.id);
+      if (isAccessError(error)) { handleAccessLost(group.id); return; }
+      setStatus(isTransientError(error) ? 'Could not refresh the group calendar. Showing the last loaded schedule.' : (error.message || 'Could not refresh the group calendar.'), true);
     }
   }
   async function ensureGroupSubscription(group, current, cloudStatus) {
     if (activeGroupSubscription) { activeGroupSubscription(); activeGroupSubscription = null; }
     if (!group || !current || cloudStatus.mode !== 'cloud' || !adapter.subscribeGroup) return;
-    activeGroupSubscription = adapter.subscribeGroup(group.id, current.id, async () => {
-      try {
-        const rows = await Promise.resolve(adapter.readSharedRoster(group.id, current.id));
-        adapter.cacheSharedProjection(group.id, rows);
-        if (calendarGroupId === group.id) await refreshOpenCalendar();
-        await render();
-      } catch (error) {
-        // Revoked or unknown failures fail closed; transient ones keep the last data.
-        if (!isTransientError(error)) handleAccessLost(group.id);
-      }
+    // replace_group_roster deletes and re-inserts every row, so one upload is a burst of change events.
+    // They collapse into a single refresh.
+    activeGroupSubscription = adapter.subscribeGroup(group.id, current.id, () => {
+      if (realtimeTimer) return;
+      realtimeTimer = setTimeout(async () => {
+        realtimeTimer = null;
+        if (String(selectedGroupId) !== String(group.id)) return;
+        try {
+          if (calendarGroupId === group.id) await refreshOpenCalendar();
+          await render();
+        } catch (error) {
+          if (isAccessError(error)) handleAccessLost(group.id);
+        }
+      }, 750);
     });
   }
   function localSummaries(current) {
@@ -357,8 +427,11 @@
     if (!current) { hubState = { status: 'signed-out', groups: [], error: '' }; renderHub(); return; }
     if (cloudStatus.mode !== 'cloud') { hubState = { status: 'local', groups: localSummaries(current), error: '' }; renderHub(); return; }
     if (offlineNow()) { hubState = { status: 'offline', groups: hubState.groups, error: '' }; renderHub(); return; }
-    hubState = { status: 'loading', groups: hubState.groups, error: '' };
-    renderHub();
+    // A background refresh keeps showing the groups already loaded; the loading notice is for the first load only.
+    if (hubState.status !== 'ready' && hubState.status !== 'empty') {
+      hubState = { status: 'loading', groups: hubState.groups, error: '' };
+      renderHub();
+    }
     try {
       const groups = await Promise.resolve(adapter.listGroupSummaries());
       if (requestId !== hubRequestId || !isCurrentUi()) return;
@@ -436,12 +509,24 @@
       meta.textContent = `${count}${manages ? 'You manage this group' : 'You are a member'}`;
     }
     if (permissions) {
-      const lines = manages
-        ? ['You can invite people and remove access.', 'You choose who sees your own schedule, person by person.', 'People only see shift dates, codes and times. Pay, notes and recovery are never shared.']
-        : ['You can see schedules people have chosen to share with you.', 'You choose who sees your own schedule, person by person.', 'People only see shift dates, codes and times. Pay, notes and recovery are never shared.'];
+      const perPerson = !cloud || reciprocalSupported();
+      const lines = cloud && !perPerson
+        ? (manages
+          ? ['You can invite people and remove access.', 'Everyone in this group sees the shift dates and codes of each person who chooses to share.', 'Shift times, pay, notes and recovery are never shared.']
+          : ['You can see the shift dates and codes people share with this group.', 'You decide whether to share yours: use the "Share my roster" switch.', 'Shift times, pay, notes and recovery are never shared.'])
+        : (manages
+          ? ['You can invite people and remove access.', 'You choose who sees your own schedule, person by person.', 'People only see shift dates, codes and times. Pay, notes and recovery are never shared.']
+          : ['You can see schedules people have chosen to share with you.', 'You choose who sees your own schedule, person by person.', 'People only see shift dates, codes and times. Pay, notes and recovery are never shared.']);
       if (!cloud) lines.unshift('Sharing is off on this device, so nothing leaves this phone.');
       permissions.innerHTML = lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
     }
+  }
+  const PREVIEW_LIMIT = 40;
+  function previewLine(row, cloud) {
+    const who = cloud && row.displayName ? `${escapeHtml(row.displayName)} · ` : '';
+    const label = row.label ? ` ${escapeHtml(row.label)}` : '';
+    const times = row.start ? ` · ${escapeHtml(row.start)}–${escapeHtml(row.finish)}` : '';
+    return `${who}${escapeHtml(row.date)} · ${escapeHtml(row.shiftCode)}${label}${times}`;
   }
   let renderSeq = 0;
   async function render() {
@@ -451,7 +536,7 @@
     syncIdentityPreference(current);
     const cloudStatus = adapter.status ? adapter.status() : { mode: 'local', reason: 'backend-not-configured' };
     const syncStatus = el('group-sync-status');
-    if (syncStatus) syncStatus.textContent = cloudStatus.mode === 'cloud' ? 'Cloud sync enabled for this session.' : `Local/offline mode. ${cloudStatus.reason === 'sync-consent-required' ? 'Explicit consent is required before cloud sync can start.' : 'Cloud sync is not enabled.'}`;
+    if (syncStatus) syncStatus.textContent = cloudStatus.mode === 'cloud' ? 'Everyone in this group sees your shift days and codes. Never times, pay or notes.' : 'Sharing is off on this device. Turn the switch on to share with a group.';
     const consent = el('group-sync-consent');
     if (consent) consent.checked = syncConsent;
     try { await restoreCloudSelection(); }
@@ -461,7 +546,11 @@
     if (stale()) return;
     if (calendarGroupId && calendarGroupId !== selectedGroupId) clearSharedCalendar();
     renderRosterSwitcher(switcherGroups(), current, calendarGroupId);
-    setStatus(current ? `App session: ${current.displayName || current.email}. ${cloudStatus.mode === 'cloud' ? 'Cloud sync is enabled.' : 'Local/offline sharing only; cloud sync is not enabled.'}` : 'Sharing is local-only until an optional sharing connection is configured.');
+    setStatus(current ? (cloudStatus.mode === 'cloud' ? `Signed in as ${current.displayName || current.email}.` : `Signed in as ${current.displayName || current.email}. Sharing is off on this device.`) : 'Sign in to share with a group. Your own roster stays on this phone.');
+    // The sign-in prompt only belongs to someone who is signed out.
+    const openAccount = el('sharing-open-account');
+    const accountRow = openAccount && typeof openAccount.closest === 'function' ? openAccount.closest('.sharing-account-note') : null;
+    if (accountRow) accountRow.classList.toggle('hidden-control', Boolean(current));
     const group = selectedGroup();
     const noGroup = el('sharing-no-group');
     const selectedCard = el('sharing-selected-group');
@@ -486,12 +575,20 @@
       return;
     }
     renderDetailHeader(group, current, cloudStatus.mode === 'cloud');
+    if (consent && cloudStatus.mode === 'cloud') consent.checked = groupShareOn(current.id, group.id);
+    const nameInput = el('sharing-display-name');
+    if (nameInput && !nameInput.value) nameInput.value = savedDisplayName(current.id);
+    applyCapabilityVisibility(cloudStatus.mode === 'cloud');
     if (preview && !preview.innerHTML) preview.textContent = 'Loading the shared schedule…';
     try {
       const rows = await Promise.resolve(adapter.readSharedRoster(group.id, current.id));
       if (stale()) return;
       await ensureGroupSubscription(group, current, cloudStatus);
-      if (preview) preview.innerHTML = `<strong>${escapeHtml(group.name)}</strong><br>${rows.length ? rows.map((row) => `${escapeHtml(row.date)} · ${escapeHtml(row.shiftCode)} ${escapeHtml(row.label)}${row.start ? ` · ${escapeHtml(row.start)}–${escapeHtml(row.finish)}` : ''}`).join('<br>') : 'No allowlisted shifts yet.'}`;
+      if (preview) {
+        const shown = rows.slice(0, PREVIEW_LIMIT).map((row) => previewLine(row, cloudStatus.mode === 'cloud')).join('<br>');
+        const more = rows.length > PREVIEW_LIMIT ? `<br>… and ${rows.length - PREVIEW_LIMIT} more` : '';
+        preview.innerHTML = `<strong>${escapeHtml(group.name)}</strong><br>${rows.length ? shown + more : 'No shared shifts yet.'}`;
+      }
       let memberRows = Object.entries(group.members || {}).map(([id, member]) => ({ userId: id, displayName: (store.accounts[id] || {}).displayName || (id === current.id ? current.displayName : 'Cloud member'), role: member.role, revokedAt: member.revokedAt || null }));
       if (cloudStatus.mode === 'cloud' && group.ownerId === current.id) {
         try {
@@ -514,7 +611,7 @@
       if (stale()) return;
       const pendingMarkup = pendingRequests.map((request) => `<article><strong>Schedule request from ${escapeHtml(request.sourceDisplayName)}</strong><span>Pending — nothing is shared until you accept.</span><button class="secondary-button compact" type="button" data-accept-reciprocal="${escapeHtml(request.grantId)}">Accept</button><button class="secondary-button compact" type="button" data-decline-reciprocal="${escapeHtml(request.grantId)}">Decline</button></article>`).join('');
       const cloud = cloudStatus.mode === 'cloud';
-      if (members) members.innerHTML = `<p class="eyebrow settings-section-label">People</p>${pendingMarkup}${memberRows.length ? '' : '<p class="muted">No one else is in this group yet. Invite someone to get started.</p>'}${memberRows.map((member) => `<article><strong>${escapeHtml(member.displayName || 'Connected person')}</strong><span>${member.revokedAt ? 'Access removed' : 'Connected'}</span>${current.id === group.ownerId && member.userId !== current.id && !member.revokedAt ? `<button class="secondary-button compact" type="button" data-revoke-member="${escapeHtml(member.userId)}">Remove access</button>` : ''}${consentMarkup(member, cloud)}</article>`).join('')}`;
+      if (members) members.innerHTML = `<p class="eyebrow settings-section-label">People</p>${pendingMarkup}${memberRows.length ? '' : '<p class="muted">No one else is in this group yet. Invite someone to get started.</p>'}${memberRows.map((member) => `<article><strong>${escapeHtml(member.displayName || 'Connected person')}</strong><span>${member.revokedAt ? 'Access removed' : 'Connected'}</span>${current.id === group.ownerId && member.userId !== current.id && !member.revokedAt ? `<button class="secondary-button compact" type="button" data-revoke-member="${escapeHtml(member.userId)}">Remove access</button>` : ''}${consentMarkup(member, cloud && reciprocalSupported())}</article>`).join('')}`;
       if (cloud) maybeUploadOutgoing(group).catch(() => {});
     } catch (error) {
       if (stale()) return;
@@ -560,6 +657,7 @@
     try {
       const result = await Promise.resolve(adapter.acceptInvite(token, current.email));
       clearPendingInvite();
+      await applySavedDisplayName(result.groupId, current);
       selectGroup(result.groupId);
       save();
       await render();
@@ -589,21 +687,44 @@
     const panel = el('sharing-invite-panel');
     if (panel) panel.classList.remove('hidden-control');
     const toggle = el('sharing-invite-panel-toggle');
-    if (toggle) toggle.textContent = 'Hide invite options';
+    if (toggle) toggle.textContent = 'Close invite';
   });
   el('sharing-back-to-groups').addEventListener('click', () => setShareView(false));
   el('sharing-invite-panel-toggle').addEventListener('click', () => {
     const panel = el('sharing-invite-panel');
     if (!panel) return;
     const open = panel.classList.toggle('hidden-control');
-    el('sharing-invite-panel-toggle').textContent = open ? 'Show invite options' : 'Hide invite options';
+    el('sharing-invite-panel-toggle').textContent = open ? 'Invite someone' : 'Close invite';
   });
+  // The switch applies at once; the hidden save button remains the single code path.
+  el('group-sync-consent').addEventListener('change', () => { el('group-enable-sync').click(); });
   el('group-enable-sync').addEventListener('click', async () => {
     syncConsent = Boolean(el('group-sync-consent').checked);
+    const current = account();
+    if (syncConsent && current && adapter.status && adapter.status().mode === 'cloud') {
+      const typed = String((el('sharing-display-name') || {}).value || '').trim();
+      if (typed && typed.length <= 40 && !typed.includes('@')) saveDisplayName(current.id, typed);
+      if (!savedDisplayName(current.id)) {
+        el('group-sync-consent').checked = false;
+        syncConsent = false;
+        setStatus('Add your name first, so your group knows whose shifts these are.', true);
+        const nameBox = el('sharing-display-name'); if (nameBox && typeof nameBox.focus === 'function') nameBox.focus();
+        return;
+      }
+    }
     if (!syncConsent) {
+      // Unticking while a cloud group is open withdraws sharing with that group but keeps cloud viewing on.
+      const open = selectedGroup();
+      if (current && open && adapter.status && adapter.status().mode === 'cloud' && !/^group_/i.test(String(open.id))) {
+        syncConsent = syncPreference ? syncPreference.canUpload() : false;
+        const outcome = await withdrawSharing(open, current);
+        await render();
+        setStatus(outcome.message, !outcome.ok);
+        return;
+      }
       if (syncPreference) syncPreference.set('local-only');
       clearCloudDerivedState();
-      setStatus('Check the consent box before enabling cloud sync.', true);
+      setStatus('Turn on the switch to share.', true);
       return;
     }
     if (syncPreference) syncPreference.set('cloud-enabled');
@@ -614,19 +735,21 @@
       setStatus(status.reason === 'backend-transport-unavailable' ? 'Cloud sync consent recorded, but no configured client factory is available. Staying local/offline.' : 'Cloud sync is not configured. Staying local/offline.', true);
       return;
     }
-    const current = account();
     await restoreCloudSelection();
     const group = selectedGroup();
-    if (!current || !group || group.ownerId !== current.id || /^group_/i.test(String(group.id))) {
+    if (!current || !group || /^group_/i.test(String(group.id))) {
       await render();
-      setStatus('Create or select a cloud connection before enabling cloud sync.', true);
+      setStatus('Cloud sync is on. Create a group or accept an invite, then switch sharing on.', true);
       return;
     }
     try {
-      await Promise.resolve(adapter.setSharingPreference(group.id, current.id, true));
+      await applySavedDisplayName(group.id, current);
+      setGroupShare(current.id, group.id, true);
+      rosterUploadKey = '';
       await render();
-      setStatus('Cloud sync enabled for this group.');
+      setStatus(`Sharing your shift dates and codes with ${group.name || 'this group'}. Everyone in the group can see them.`);
     } catch (error) {
+      setGroupShare(current.id, group.id, false);
       syncConsent = false;
       adapter = makeAdapter();
       await render();
@@ -641,15 +764,14 @@
       const current = account();
       if (!current) throw new Error('sign in before creating a group');
       const currentStatus = adapter.status ? adapter.status() : { mode: 'local' };
-      const group = await Promise.resolve(adapter.createGroup({ name: el('group-name').value, ownerId: current.id, roster: currentRoster.roster, templates: currentRoster.templates }));
+      const group = await Promise.resolve(adapter.createGroup({ name: el('group-name').value, ownerId: current.id, displayName: savedDisplayName(current.id) || undefined, roster: currentRoster.roster, templates: currentRoster.templates }));
       if (!group || !group.id) throw new Error('group creation returned no group id');
       if (currentStatus.mode === 'cloud' && /^group_/i.test(String(group.id))) throw new Error('cloud group creation returned a local group id');
       if (currentStatus.mode === 'cloud') clearLocalGroupsBeforeCloudSelection();
       store.groups[group.id] = group;
       selectGroup(group.id);
-      if (currentStatus.mode === 'cloud') {
-        await Promise.resolve(adapter.setSharingPreference(group.id, current.id, true));
-      }
+      // Creating a group is the manager's choice to share with the people they invite.
+      if (currentStatus.mode === 'cloud') { setGroupShare(current.id, group.id, true); rosterUploadKey = ''; }
       showCreateForm = false;
       setStatus(`Created ${group.name}. Sharing is ready.`);
       return `Created ${group.name}. Sharing is ready.`;
@@ -695,6 +817,7 @@
     }
     run(async () => {
       const result = await Promise.resolve(adapter.acceptInvite(token, current.email));
+      await applySavedDisplayName(result.groupId, current);
       selectGroup(result.groupId);
       clearPendingInvite();
       el('group-invite-output').textContent = 'Invite accepted. Only the shared roster projection is visible.';
@@ -749,12 +872,18 @@
   on('sharing-new-group', 'click', () => { showCreateForm = true; render(); });
   on('sharing-view-group-calendar', 'click', () => run(async () => { await openGroupCalendar(null); }));
   on('sharing-refresh-group', 'click', () => run(async () => { lastUploadKey = ''; await refreshOpenCalendar(); return 'Refreshed.'; }));
+  on('sharing-display-name', 'change', () => { const box = el('sharing-save-display-name'); if (box && String((el('sharing-display-name') || {}).value || '').trim()) box.click(); });
   on('sharing-save-display-name', 'click', () => run(async () => {
     const name = String((el('sharing-display-name') || {}).value || '').trim();
-    if (!name || name.length > 60 || name.includes('@')) throw new Error('Enter a short name without an email address.');
-    if (!adapter.status || adapter.status().mode !== 'cloud') throw new Error('Turn on cloud sync to change the name your group sees.');
-    await Promise.resolve(adapter.setDisplayName(name));
-    return 'Name saved. Your group sees this name next to your schedule.';
+    if (!name || name.length > 40 || name.includes('@')) throw new Error('Enter a name of up to 40 characters, without an email address.');
+    const current = account();
+    if (!current) throw new Error('Sign in first to set your name.');
+    const group = selectedGroup();
+    if (!group || !adapter.status || adapter.status().mode !== 'cloud' || /^group_/i.test(String(group.id))) { saveDisplayName(current.id, name); return 'Name saved. It is used when you join or create a group.'; }
+    if (adapter.capabilities && adapter.capabilities().displayName !== true) throw new Error('Changing the name your group sees is not available yet.');
+    await Promise.resolve(adapter.setDisplayName(group.id, name));
+    saveDisplayName(current.id, name);
+    return 'Name saved. Your group sees this name next to your shifts.';
   }));
   // Reciprocal rosters have no realtime delivery (no SELECT grant), so cloud
   // state is refetched on a timer and when the app becomes visible again.
@@ -770,8 +899,16 @@
   window.addEventListener('offline', () => { loadHub(); });
   window.addEventListener('storage', (event) => { if (event.key === STORAGE) { store = load(); adapter = makeAdapter(); render(); } });
   window.addEventListener('rosterbuddy:sync-preference-changed', () => {
+    const wasCloud = Boolean(adapter && adapter.status && adapter.status().mode === 'cloud');
+    const open = selectedGroup();
+    const me = account();
     if (adapter && typeof adapter.clearCloudState === 'function') adapter.clearCloudState();
     syncConsent = syncPreference ? syncPreference.canUpload() : false;
+    // Going local-only must not leave this person's shifts readable in the group: remove them while the cloud
+    // adapter still exists (best effort; the choice itself is recorded either way).
+    if (!syncConsent && wasCloud && open && me && !/^group_/i.test(String(open.id)) && groupShareOn(me.id, open.id)) {
+      withdrawSharing(open, me).then((outcome) => setStatus(outcome.message, !outcome.ok), () => {});
+    }
     if (!syncConsent) clearCloudDerivedState();
     adapter = makeAdapter();
     render();
@@ -796,16 +933,35 @@
     }
     restoreCloudSelection().then(() => render()).then(() => resumePendingInvite());
   });
-  setInterval(async () => {
+  // Cloud only: send the caller's own roster, if they chose to share with this group, when it has changed. Local groups hold a snapshot taken when the group
+  // was created (the local adapter never refreshes it), so there is nothing to upload or re-render for them.
+  async function uploadMyRoster(group, current) {
+    if (!adapter.status || adapter.status().mode !== 'cloud') return;
+    if (rosterUploadInFlight || Date.now() < rosterUploadRetryAt) return;
+    const latest = window.RosterBuddyGetLocalRoster();
+    const today = new Date();
+    const key = [group.id, current.id, `${today.getFullYear()}-${today.getMonth()}`, JSON.stringify(latest.roster), JSON.stringify(latest.templates)].join('|');
+    if (key === rosterUploadKey) return;
+    rosterUploadInFlight = true;
+    try {
+      await Promise.resolve(adapter.updateRoster(group.id, current.id, latest.roster, latest.templates));
+      rosterUploadKey = key;
+      rosterUploadRetryAt = 0;
+      const report = adapter.rosterUploadReport ? adapter.rosterUploadReport() : null;
+      if (report && report.skipped > 0) setStatus(`${report.skipped} shift${report.skipped === 1 ? ' was' : 's were'} not shared because the code has symbols or is not 1-4 letters/digits.`, true);
+    } catch (error) {
+      rosterUploadRetryAt = Date.now() + 60000;
+      setStatus(error.message || 'Roster update failed.', true);
+    } finally { rosterUploadInFlight = false; }
+  }
+  setInterval(() => {
     const group = selectedGroup();
     const current = account();
     if (group && current) maybeUploadOutgoing(group).catch(() => {});
-    if (!group || !current || group.ownerId !== current.id || !window.RosterBuddyGetLocalRoster) return;
-    const latest = window.RosterBuddyGetLocalRoster();
-    if (JSON.stringify(group.roster) !== JSON.stringify(latest.roster) || JSON.stringify(group.templates) !== JSON.stringify(latest.templates)) {
-      try { await Promise.resolve(adapter.updateRoster(group.id, current.id, latest.roster, latest.templates)); save(); await render(); } catch (error) { setStatus(error.message || 'Roster update failed.', true); }
-    }
+    if (!group || !current || !window.RosterBuddyGetLocalRoster || !groupShareOn(current.id, group.id)) return;
+    uploadMyRoster(group, current);
   }, 1000);
+  window.RosterBuddyCalendarMonthChanged = () => { if (calendarGroupId) refreshOpenCalendar(); };
   render();
   window.RosterBuddyReceiveInviteLink = (link) => {
     const token = tokenFromInput(link);

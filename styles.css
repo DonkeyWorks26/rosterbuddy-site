@@ -2413,7 +2413,7 @@ body[data-theme="midnight"] .period-toggle button.active {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: conic-gradient(var(--coral) 0 72%, var(--ring-track, #e8eef0) 72% 100%);
+  background: conic-gradient(var(--coral) 0 72%, #e8eef0 72% 100%);
 }
 
 .ring span {
@@ -3777,7 +3777,6 @@ body[data-theme="midnight"] {
   --text:#E8EFEE;--text-2:#B4C0BF;--text-3:#8FA0A0;
   --accent:#3FBFB3;--accent-text:#6FD8CE;--accent-soft:#143634;--on-accent:#052321;--cycle:#122223;
   --ok:#7ADBA8;--ok-soft:#143526;--warn:#F2BE72;--warn-soft:#3A2A10;--danger:#FF9A8B;--danger-soft:#3D1D1A;
-  --ring-track:#3A4849;
   --amber-bg:#3A2A10;--amber-fg:#F2BE72;--blue-bg:#16304D;--blue-fg:#8DBBF2;--violet-bg:#2A1F47;--violet-fg:#C2AEF7;--green-bg:#143526;--green-fg:#7ADBA8;
   --aqua-bg:#143634;--aqua-fg:#6FD8CE;--coral-bg:#3D211B;--coral-fg:#F5A58F;--pink-bg:#3F1D31;--pink-fg:#F2A6CC;--slate-bg:#243038;--slate-fg:#B4C0BF;
   --red-bg:#3D1D1A;--red-fg:#FF9A8B;--lime-bg:#2C3412;--lime-fg:#C5DB7C;--orange-bg:#3A2410;--orange-fg:#F5B07A;
@@ -4106,10 +4105,159 @@ button:focus-visible, .tab:focus-visible, .day:focus-visible, summary:focus-visi
 #screen-share .sharing-card .notice { margin: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); color: var(--text); font-size: 14px; line-height: 20px; }
 #screen-share .sharing-card .theme-card.sharing-section { padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: none; }
 
-/* Recovery resource links: standalone text links were 19px tall; keep a tappable target (WCAG 2.2 AA minimum is 24px). */
-.recovery-toolkit a,
-.mental-health-card a {
-  display: flex;
-  align-items: center;
-  min-height: 32px;
+/* ── Layout pass: larger Calendar, one-line header, tidy minimisable legend, faster Edit shifts ──
+   Appended as its own block so it can be reviewed or reverted separately. Calendar sizing is
+   portrait-only; the landscape two-column layout above is deliberately left alone. */
+@media (orientation: portrait) {
+  /* --cell-h is a ceiling: the grid still shrinks to the space left, but now has room to grow */
+  #screen-calendar.compact-screen { --cell-h: 104px; }
+
+  /* The blanket `> * { flex: 0 0 auto }` rule above also caught the content area, so it grew to its
+     content and was clipped. It must take the space between header and Edit bar, and let the grid shrink. */
+  #screen-calendar.compact-screen > .scroll.cal { flex: 1 1 0; min-height: 0; }
+
+  /* header: "My calendar" label and the month title share one line */
+  #screen-calendar.compact-screen .app-topbar > div:first-child { flex-direction: row; align-items: baseline; flex-wrap: nowrap; gap: 8px; }
+  #screen-calendar.compact-screen .app-topbar .eyebrow:not(.brand-lockup) { flex: 0 1 auto; min-width: 0; max-width: 45%; margin: 0; font-size: 11px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #screen-calendar.compact-screen .app-topbar h1 { flex: 1 1 auto; min-width: 0; font-size: 19px; line-height: 24px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #screen-calendar.compact-screen > .app-topbar { min-height: 0; padding-bottom: 0; }
+
+  /* summary tiles and pay-cycle pill: same information, less height */
+  #screen-calendar.compact-screen .calendar-summary-strip { gap: 6px; }
+  #screen-calendar.compact-screen .calendar-summary-strip article { padding: 3px 10px; border-radius: 10px; }
+  #screen-calendar.compact-screen .calendar-summary-strip article span { font-size: 10px; line-height: 13px; text-transform: uppercase; letter-spacing: .04em; }
+  #screen-calendar.compact-screen .calendar-summary-strip article strong { font-size: 16px; line-height: 20px; }
+  .cyc-pill { min-height: 22px; margin: 0 0 4px; font-size: 11.5px; }
+  #screen-calendar.compact-screen .compact-calendar-card { padding: 6px; }
+  #screen-calendar.compact-screen .month-toolbar { margin: 0 0 2px; }
+  #screen-calendar.compact-screen .month-toolbar .ghost-button { width: 40px; height: 32px; }
+
+  /* bigger day numbers and shift codes */
+  #screen-calendar.compact-screen .day { padding: 3px 4px; grid-template-rows: 20px 1fr; }
+  #screen-calendar.compact-screen .day strong { font-size: 14px; line-height: 20px; min-width: 20px; }
+  #screen-calendar.compact-screen .badge,
+  #screen-calendar.compact-screen .badge em,
+  #screen-calendar.compact-screen .calendar-main-marker { font-size: 17px; }
+  #screen-calendar.compact-screen .badge.has-markers .calendar-marker-row i { font-size: 9.5px; line-height: 11px; }
+  #screen-calendar.compact-screen > .actions { padding-top: 8px; padding-bottom: 8px; }
+
+  /* legend: single-line tiles in two columns, with the minimise button beside them (no heading row
+     while open; the "Shift legend" label only shows once it is minimised). Capped so it can never
+     take the screen from the calendar, however many shifts a month uses. */
+  #screen-calendar.compact-screen .calendar-details:has(#calendar-legend.hidden-control) { display: none; }
+  #screen-calendar.compact-screen .calendar-details { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4px; align-items: start; }
+  #screen-calendar.compact-screen .calendar-details-heading { display: contents; }
+  #screen-calendar.compact-screen .calendar-details-heading strong { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #screen-calendar.compact-screen .calendar-details.is-collapsed .calendar-details-heading strong { position: static; width: auto; height: auto; overflow: visible; clip-path: none; grid-area: 1 / 1; align-self: center; }
+  #screen-calendar.compact-screen .calendar-details-toggle { display: inline-flex; align-items: center; justify-content: center; grid-area: 1 / 2; }
+  #screen-calendar.compact-screen .secondary-button.compact.calendar-details-toggle { position: relative; width: 34px; min-width: 34px; height: 30px; min-height: 30px; padding: 0; }
+  /* the button is narrow to leave room for the tiles; this keeps a full-size touch target */
+  #screen-calendar.compact-screen .calendar-details-toggle::after { content: ""; position: absolute; inset: -8px -6px; }
+  #screen-calendar.compact-screen #calendar-details-content { grid-area: 1 / 1; min-width: 0; }
+  #screen-calendar.compact-screen #calendar-details-content.hidden-control { display: none !important; }
+  #screen-calendar.compact-screen .calendar-legend { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 6px; font-size: 12px; max-height: calc(5.4em + 35px); overflow-y: auto; scrollbar-width: none; }
+  /* The cap is in em, not px: Android's system font scale (e.g. 1.15) makes the tiles taller, and a px cap
+     would clip the last row. It fits four rows of tiles, i.e. up to 7 shifts plus the pay-cycle tile. */
+  #screen-calendar.compact-screen .calendar-legend.hidden-control { display: none !important; }
+  #screen-calendar.compact-screen .legend-chip { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 1em; line-height: 1.35; font-weight: 650; white-space: nowrap; }
+  #screen-calendar.compact-screen .legend-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #screen-calendar.compact-screen #calendar-details-content { container-type: inline-size; }
+  /* narrow phones: drop the descriptive name (the code and the time are what matter) rather than truncating it to "E Ea…" */
+  @container (max-width: 316px) { .legend-name { display: none; } }
+  #screen-calendar.compact-screen .legend-chip em { flex: none; margin-left: auto; padding-left: 2px; font-size: .875em; font-weight: 400; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #screen-calendar.compact-screen .legend-chip.legend-cycle { border-color: transparent; background: var(--cycle); color: var(--accent-text); font-size: .92em; font-weight: 600; }
+
+  #screen-calendar.compact-screen .calendar-day-strip { padding: 4px 10px; gap: 10px; }
+  #screen-calendar.compact-screen .dbadge { width: 36px; height: 36px; min-height: 36px; }
 }
+
+/* Edit shifts: the date stays pinned, modifiers sit above a compact shift grid, nothing to hunt for */
+#screen-quick-add > .scroll { gap: 10px; }
+#screen-quick-add .quick-day-bar { position: sticky; top: -4px; z-index: 5; display: flex; flex-direction: column; gap: 6px; margin: -4px -16px 0; padding: 4px 16px 8px; background: var(--bg); border-bottom: 1px solid var(--border); }
+#screen-quick-add .quick-day-bar .week { gap: 4px; }
+#screen-quick-add .quick-day-bar .pill { min-height: 56px; }
+#screen-quick-add .dayhead { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 6px; }
+#screen-quick-add .dayhead-text { display: flex; flex-direction: column; align-items: center; min-width: 0; text-align: center; }
+#screen-quick-add .dayhead h2 { font-size: 22px; line-height: 28px; }
+#screen-quick-add .dayhead .sub { font-size: 14px; line-height: 18px; text-align: center; }
+#screen-quick-add .quick-day-step { width: 44px; height: 44px; border-radius: 12px; }
+#screen-quick-add .quick-day-step:disabled { opacity: .35; }
+#screen-quick-add .day-detail-note { margin: 0; text-align: center; }
+#screen-quick-add .group-label { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+#screen-quick-add .group-hint { margin-left: 6px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-2); }
+#screen-quick-add .quick-entry-panel .group-label { margin-bottom: 6px; }
+#screen-quick-add .mods { gap: 6px; }
+#screen-quick-add .mod { flex: 1 1 auto; justify-content: center; min-height: 40px; padding: 0 10px; font-size: 13px; }
+#screen-quick-add .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#screen-quick-add .choice { position: relative; min-width: 0; min-height: 56px; padding: 6px 10px; gap: 10px; }
+#screen-quick-add .choice .cbadge { width: 34px; height: 34px; min-height: 34px; }
+#screen-quick-add .choice[aria-checked="true"] .t { padding-right: 18px; }
+#screen-quick-add .choice .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; line-height: 18px; }
+#screen-quick-add .choice .s { font-size: 12px; line-height: 16px; }
+#screen-quick-add .choice .paid { display: none; }
+#screen-quick-add .choice .ck { position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; border-color: transparent; }
+#screen-quick-add .choice .ck svg { width: 11px; height: 11px; }
+#screen-quick-add .choice[aria-checked="true"] .ck { border-color: var(--accent); }
+
+/* ── Calendar day markers (CAS / HD / OC / +H): one line under the shift code, never cut off ──
+   The code and its markers used to share one ~44px line and the markers were squeezed out. They now
+   sit on their own single line (JS switches to single letters when the full labels would not fit).
+   Days with a marker but no shift (e.g. on-call only) show their markers too: they sat in a
+   .day-meta that portrait mode hides. */
+@media (orientation: portrait) {
+  #screen-calendar.compact-screen .badge.has-markers { flex-direction: column; justify-content: center; gap: 1px; padding: 1px 2px; }
+  #screen-calendar.compact-screen .badge.has-markers .calendar-main-marker { flex: 0 0 auto; font-size: 15px; line-height: 1.05; }
+  #screen-calendar.compact-screen .badge.has-markers .calendar-marker-row { flex: 0 0 auto; flex-wrap: nowrap; justify-content: center; gap: 0 3px; max-width: 100%; overflow: visible; }
+  #screen-calendar.compact-screen .badge.has-markers .calendar-marker-row i { font-size: 9px; line-height: 10px; font-weight: 800; letter-spacing: 0; white-space: nowrap; }
+  #screen-calendar.compact-screen .day-meta.note-meta { display: flex; align-items: center; justify-content: center; overflow: visible; white-space: nowrap; }
+  #screen-calendar.compact-screen .day-meta.note-meta .calendar-marker-row { display: flex; flex-wrap: nowrap; justify-content: center; gap: 0 3px; max-width: 100%; overflow: visible; }
+  #screen-calendar.compact-screen .day-meta.note-meta .calendar-marker-row i { font-size: 9px; line-height: 11px; font-weight: 800; font-style: normal; color: var(--accent-text); }
+}
+
+/* Very short day cells (small phones, 6-row months): there is no room for marker text, so a dot says
+   "this day has a modifier" instead of showing cut-off letters. Tapping the day shows the detail. */
+@media (orientation: portrait) {
+  #screen-calendar.compact-screen .day { container-type: size; }
+  #screen-calendar.compact-screen .day .mk-dot { display: none; position: absolute; top: 7px; right: 14px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+  @container (max-height: 54px) {
+    #screen-calendar.compact-screen .badge.has-markers .calendar-marker-row, #screen-calendar.compact-screen .day-meta.note-meta { display: none; }
+    #screen-calendar.compact-screen .day .mk-dot { display: block; }
+  }
+}
+
+/* Sharing page (0.2.9): one switch, one name, one invite panel. */
+.sharing-name-row { display: grid; gap: 6px; }
+.sharing-name-row > span { font-weight: 600; }
+.sharing-switch-card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line, var(--border)); border-radius: 14px; background: var(--surface, var(--panel)); }
+.sharing-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
+.sharing-switch-text { display: grid; gap: 3px; }
+.sharing-switch-text strong { font-size: 1.05rem; }
+.sharing-switch input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; width: 52px; height: 30px; border-radius: 15px; background: var(--line, #9aa7a5); position: relative; margin: 0; transition: background .15s; }
+.sharing-switch input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.sharing-switch input[type="checkbox"]:checked { background: var(--accent); }
+.sharing-switch input[type="checkbox"]:checked::after { transform: translateX(22px); }
+.sharing-invite-card { padding: 14px; border: 1px solid var(--line, var(--border)); border-radius: 14px; }
+.sharing-people { display: grid; gap: 8px; }
+.sharing-more > summary { cursor: pointer; padding: 10px 0; color: var(--text-2, inherit); font-weight: 600; }
+.sharing-more[open] { display: grid; gap: 10px; }
+
+/* Group calendar: one colour per person (0.2.9). */
+.shared-chip.member-c0, .shared-filter.member-c0 { --member: #0F766E; }
+.shared-chip.member-c1, .shared-filter.member-c1 { --member: #B45309; }
+.shared-chip.member-c2, .shared-filter.member-c2 { --member: #7C3AED; }
+.shared-chip.member-c3, .shared-filter.member-c3 { --member: #BE185D; }
+.shared-chip.member-c4, .shared-filter.member-c4 { --member: #1D4ED8; }
+.shared-chip.member-c5, .shared-filter.member-c5 { --member: #4D7C0F; }
+.shared-chip[class*="member-c"] { background: var(--member); color: #fff; border-radius: 6px; padding: 1px 4px; font-style: normal; }
+.shared-filter[class*="member-c"] { border-color: var(--member); }
+.shared-filter[class*="member-c"].active { background: var(--member); color: #fff; }
+
+/* The switch must beat the generic form-control sizing on the Share screen. */
+#screen-share .sharing-switch { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 14px; }
+#screen-share .sharing-switch input[type="checkbox"] { flex: none; width: 52px; min-width: 52px; height: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 15px; }
+#screen-share #sharing-detail-title { margin: 4px 0 0; }
+#screen-share #sharing-detail-meta { margin: 0; }
+#screen-share #group-members article { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+#screen-share #group-members article > span { color: var(--text-2, inherit); font-size: .9rem; }
+
+#screen-share .sharing-section label.sharing-switch { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 14px; }

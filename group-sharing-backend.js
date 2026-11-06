@@ -66,6 +66,16 @@
     'invalid invitation': 'invalid_input',
     'invalid display name': 'invalid_input',
     'invalid roster': 'invalid_input',
+    // Reasons raised by the live Sandbox RPCs (20261030* migrations).
+    'not_a_member': 'not_authorized',
+    'authentication_required': 'sign_in_required',
+    'range_invalid': 'invalid_input',
+    'group_name_invalid': 'invalid_input',
+    'owner_must_transfer_or_remove_members': 'owner_must_transfer',
+    'owner_required': 'not_authorized',
+    'cannot_revoke_owner': 'cannot_revoke_owner',
+    'membership_not_found': 'membership_unavailable',
+    'too_many_shifts': 'invalid_input',
   });
   const CATEGORY_MESSAGES = Object.freeze({
     not_authorized: 'You do not have access to that group.',
@@ -75,6 +85,8 @@
     group_unavailable: 'That group is not available.',
     sign_in_required: 'Sign in to continue.',
     invalid_input: 'That request was not valid.',
+    owner_must_transfer: 'Remove the other members or hand over the group before leaving it.',
+    cannot_revoke_owner: 'The group owner cannot be removed.',
     permission_denied: 'The sharing service refused that request.',
     session_expired: 'Your sharing session has expired. Sign in again.',
     conflict: 'That change conflicts with an existing record.',
@@ -112,6 +124,42 @@
   }
   function isRevocationError(error) {
     return Boolean(error && (error.code === 'not_authorized' || error.code === 'sharing_unavailable' || error.code === 'permission_denied'));
+  }
+
+  // get_group_roster refuses ranges over 62 days and, given no range, returns one
+  // empty row per member. replace_group_roster refuses more than 366 entries.
+  const MAX_READ_DAYS = 62;
+  const MAX_UPLOAD_ENTRIES = 366;
+  const pad2 = (value) => String(value).padStart(2, '0');
+  const localIso = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  function addDays(iso, days) {
+    const [year, month, day] = iso.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+  }
+  function validIso(value) { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value); }
+  // An explicit {from, to} wins (clamped to the server limit); otherwise the
+  // current month onward, which is what the group roster preview shows.
+  function readWindow(range, nowMs) {
+    if (range && validIso(range.from) && validIso(range.to) && range.to >= range.from) {
+      const limit = addDays(range.from, MAX_READ_DAYS - 1);
+      return { from: range.from, to: range.to > limit ? limit : range.to };
+    }
+    const today = new Date(nowMs);
+    const from = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-01`;
+    return { from, to: addDays(from, MAX_READ_DAYS - 1) };
+  }
+  // Uploads start at the first day of the previous month so history never
+  // pushes a long-time user over the server entry cap.
+  const WITHDRAW_FROM = '2026-01-01'; // before this feature existed; nothing was ever shared earlier
+  const UPLOAD_SPAN_DAYS = 366; // upsert_my_shifts refuses a window wider than 366 days
+  function uploadWindow(nowMs) {
+    const from = uploadWindowStart(nowMs);
+    return { from, to: addDays(from, UPLOAD_SPAN_DAYS - 1) };
+  }
+  function uploadWindowStart(nowMs) {
+    const today = new Date(nowMs);
+    const previous = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    return `${previous.getFullYear()}-${pad2(previous.getMonth() + 1)}-01`;
   }
 
   const CONSENT_STATES = Object.freeze(['pending', 'accepted', 'paused', 'declined', 'revoked']);
@@ -183,6 +231,18 @@
       }),
       acceptGroupInvitation: (input = {}) => rpc('accept_group_invitation', { p_token: input.token }),
       revokeGroupInvitation: (input = {}) => rpc('revoke_group_invitation', { p_invitation_id: input.invitationId }),
+      // Any active member uploads their OWN shifts (date_key/code), replacing what they sent for [from, to].
+      // No window (null) only adds or updates. replace_group_roster below is the older owner-only call.
+      upsertMyShifts: (input = {}) => rpc('upsert_my_shifts', {
+        p_group_id: input.groupId,
+        p_shifts: Array.isArray(input.shifts) ? input.shifts : [],
+        p_from: input.from == null ? null : input.from,
+        p_to: input.to == null ? null : input.to,
+      }),
+      setMyDisplayName: (input = {}) => rpc('set_my_display_name', {
+        p_group_id: input.groupId,
+        p_display_name: input.displayName,
+      }),
       replaceGroupRoster: (input = {}) => rpc('replace_group_roster', {
         p_group_id: input.groupId,
         p_entries: Array.isArray(input.entries) ? input.entries : [],
@@ -202,12 +262,13 @@
     };
   }
 
-  function createGroupSharingAdapter({ localApi, localStore, config = {}, transport = null, syncConsent = false } = {}) {
+  function createGroupSharingAdapter({ localApi, localStore, config = {}, transport = null, syncConsent = false, now = () => Date.now() } = {}) {
     if (!localApi || !localStore) throw new Error('local group-sharing boundary required');
     const parsed = readSupabaseConfig(config);
     let consent = syncConsent === true;
     const cache = new Map();
     const subscriptions = new Map();
+    let lastRosterReport = { sent: 0, skipped: 0 };
 
     function cloudSelected() { return parsed.configured && consent; }
     function cloudReady() { return cloudSelected() && transport; }
@@ -230,7 +291,8 @@
       const data = unwrapRpc(name, result);
       if (name === 'createGroup') {
         const id = Array.isArray(data) ? data[0] : data;
-        const groupId = id && typeof id === 'object' ? (id.id || id.household_id) : id;
+        // create_group returns table(group_id uuid), so a row object; older shapes returned a bare id.
+        const groupId = id && typeof id === 'object' ? (id.group_id || id.id || id.household_id) : id;
         if (!groupId) throw new Error('cloud group creation returned no group id');
         if (/^group_/i.test(String(groupId))) throw new Error('cloud group creation returned a local group id');
         const ownerId = input.ownerId || null;
@@ -259,13 +321,24 @@
       }));
       if (name === 'createGroupInvitation') {
         const row = Array.isArray(data) ? data[0] : data;
-        return row ? {
+        if (!row) return row;
+        const token = row.token;
+        return {
           invitationId: row.invitation_id || row.invitationId,
-          token: row.token,
+          token,
+          // The server hands back only the one-time token. Build the same link the local path returns so the
+          // owner can copy or share it; without it the UI rejects the invite and the token is lost.
+          link: token ? `rosterbuddy://invite/${encodeURIComponent(token)}` : undefined,
           expiresAt: row.expires_at || row.expiresAt || null,
-        } : row;
+        };
       }
-      if (name === 'acceptGroupInvitation') return data;
+      if (name === 'acceptGroupInvitation') {
+        // accept_group_invitation returns the bare group uuid; the UI reads result.groupId like the local path.
+        const row = Array.isArray(data) ? data[0] : data;
+        const groupId = row && typeof row === 'object' ? (row.group_id || row.groupId || row.id) : row;
+        if (!groupId) throw new Error('invite acceptance returned no group id');
+        return { groupId: String(groupId) };
+      }
       return data;
     }
     function unsupported(name) {
@@ -286,6 +359,20 @@
           : cloudResult(name, result, input);
       }
       return localApi[name](localStore, ...args);
+    }
+    function peopleFrom(rows, accountId) {
+      const seen = new Map();
+      rows.forEach((row) => {
+        if (!row.userId || seen.has(row.userId)) return;
+        seen.set(row.userId, { userId: row.userId, displayName: row.displayName, role: row.userId === accountId ? 'owner' : 'member', revokedAt: null, joinedAt: null });
+      });
+      return Array.from(seen.values());
+    }
+    // One member-labelled read for everything the Sandbox exposes: shifts for the window, and (via the
+    // empty rows the server returns for members without shifts) the member list.
+    function fetchGroupRows(groupId, range) {
+      const win = readWindow(range, now());
+      return Promise.resolve(call('getGroupRoster', [{ groupId, from: win.from, to: win.to }], { groupId, from: win.from, to: win.to }));
     }
     function setSyncConsent(value) {
       consent = value === true;
@@ -361,7 +448,7 @@
       projectRoster: localApi.projectRoster,
       readSharedRoster: (groupId, accountId, range = {}) => {
         if (!cloudSelected()) return call('readSharedRoster', [{ groupId, accountId }], { groupId, accountId });
-        return call('getGroupRoster', [{ groupId, from: range.from, to: range.to }], { groupId, from: range.from, to: range.to });
+        return fetchGroupRows(groupId, range).then((rows) => rows.filter((row) => row.date));
       },
       getGroupRoster: (groupId, from, to) => {
         if (!cloudSelected()) throw unsupported('getGroupRoster');
@@ -372,8 +459,10 @@
         return call('listGroupInvitations', [{ groupId }], { groupId });
       },
       listMembers: (groupId, accountId) => {
-        if (cloudSelected()) throw unsupported('listMembers');
-        return call('listMembers', [{ groupId, accountId }], { groupId, accountId });
+        if (!cloudSelected()) return call('listMembers', [{ groupId, accountId }], { groupId, accountId });
+        // Callers only ask as the group manager, so the caller's own row is the manager.
+        const today = localIso(new Date(now()));
+        return fetchGroupRows(groupId, { from: today, to: today }).then((rows) => peopleFrom(rows, accountId));
       },
       listPendingReciprocalRequests: (groupId, accountId) => {
         if (cloudSelected()) throw unsupported('listPendingReciprocalRequests');
@@ -399,14 +488,46 @@
         const cleanup = call('subscribeGroup', [{ groupId }, listener], { groupId });
         return trackSubscription(groupId, cleanup);
       },
+      // Upload the caller's OWN shifts (any active member, not only the manager). The server replaces whatever this
+      // person sent inside the window, so a shift removed locally disappears from the group too.
       updateRoster: (groupId, actorId, roster, templates) => {
         if (!cloudSelected()) return false;
-        const entries = Array.isArray(roster) ? roster : localApi.projectRoster(roster || {}, templates || {}).map((row) => ({
-          date: row.date,
-          code: String(row.shiftCode || '').toUpperCase().slice(0, 4),
-        })).filter((row) => /^[A-Z0-9]{1,4}$/.test(row.code));
-        return call('replaceGroupRoster', [{ groupId, entries }], { groupId, entries });
+        let entries; let skipped = 0; let win = null;
+        if (Array.isArray(roster)) entries = roster;
+        else {
+          win = uploadWindow(now());
+          entries = [];
+          localApi.projectRoster(roster || {}, templates || {}).filter((row) => row.date >= win.from && row.date <= win.to).forEach((row) => {
+            const code = String(row.shiftCode || '').toUpperCase().slice(0, 4);
+            if (/^[A-Z0-9]{1,4}$/.test(code)) entries.push({ date: row.date, code }); else skipped += 1;
+          });
+          entries = entries.slice(0, MAX_UPLOAD_ENTRIES);
+        }
+        lastRosterReport = { sent: entries.length, skipped };
+        const shifts = entries.map((entry) => ({ date_key: entry.date, code: entry.code }));
+        return call('upsertMyShifts', [{ groupId, shifts, from: win && win.from, to: win && win.to }], { groupId, shifts });
       },
+      // Withdraw: remove everything this person has shared with the group. Shifts uploaded in earlier months
+      // would survive a clear of only the current window, so clear from before sharing existed up to the end of
+      // the current window, in consecutive windows the server accepts. Succeeds only if every window did.
+      stopSharing: (groupId) => {
+        if (!cloudSelected()) throw unsupported('stopSharing');
+        lastRosterReport = { sent: 0, skipped: 0 };
+        const end = uploadWindow(now()).to;
+        return (async () => {
+          let from = WITHDRAW_FROM;
+          while (from <= end) {
+            const to = addDays(from, UPLOAD_SPAN_DAYS - 1);
+            await Promise.resolve(call('upsertMyShifts', [{ groupId, shifts: [], from, to }], { groupId, shifts: [] }));
+            from = addDays(to, 1);
+          }
+          return true;
+        })();
+      },
+      // What the last cloud upload sent, and how many shifts were left out because their code is not 1-4 letters/digits.
+      rosterUploadReport: () => ({ ...lastRosterReport }),
+      // What the live Sandbox can do. The reciprocal/consent RPCs of migration 20261027 are not deployed.
+      capabilities: () => ({ reciprocalSharing: false, schedulePreference: false, displayName: true, memberUpload: true }),
       setGroupSharing: (groupId, shareNotes) => {
         if (!cloudSelected()) throw unsupported('setGroupSharing');
         return call('setGroupSharing', [{ groupId, shareNotes: shareNotes === true }], { groupId, shareNotes: shareNotes === true });
@@ -421,16 +542,29 @@
       updateReciprocalRoster: () => { throw unsupported('updateReciprocalRoster'); },
       pauseReciprocalSharing: () => { throw unsupported('pauseReciprocalSharing'); },
       resumeReciprocalSharing: () => { throw unsupported('resumeReciprocalSharing'); },
-      readGroupSchedule: () => { throw unsupported('readGroupSchedule'); },
+      readGroupSchedule: (groupId, range) => {
+        if (!cloudSelected()) throw unsupported('readGroupSchedule');
+        return fetchGroupRows(groupId, range).then((rows) => rows.filter((row) => row.date).map((row) => ({
+          sourceUserId: row.userId, displayName: row.displayName || 'Group member', date: row.date, shiftCode: row.shiftCode,
+          label: '', start: '', finish: '', version: 0,
+        })));
+      },
       getCachedGroupSchedule: () => [],
-      listGroupPeople: () => { throw unsupported('listGroupPeople'); },
+      listGroupPeople: (groupId) => {
+        if (!cloudSelected()) throw unsupported('listGroupPeople');
+        const today = localIso(new Date(now()));
+        return fetchGroupRows(groupId, { from: today, to: today }).then((rows) => peopleFrom(rows, null));
+      },
       listGroupSummaries: () => {
         if (!cloudSelected()) throw unsupported('listGroupSummaries');
         return call('listMyGroups', [], {});
       },
       listMySharing: () => { throw unsupported('listMySharing'); },
       syncOutgoingSchedules: async () => { throw unsupported('syncOutgoingSchedules'); },
-      setDisplayName: () => { throw unsupported('setDisplayName'); },
+      setDisplayName: (groupId, displayName) => {
+        if (!cloudSelected()) throw unsupported('setDisplayName');
+        return call('setMyDisplayName', [{ groupId, displayName }], { groupId, displayName });
+      },
       isActiveMember: (groupId, userId) => {
         if (!cloudSelected()) throw unsupported('isActiveMember');
         return call('isActiveMember', [{ groupId, userId }], { groupId, userId });
