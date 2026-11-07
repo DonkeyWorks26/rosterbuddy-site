@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#153447" />
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <title>RosterBuddy V0.2.14</title>
+    <title>RosterBuddy V0.2.15</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -790,7 +790,7 @@
               <button class="secondary-button compact hidden-control" id="sharing-hub-retry" type="button">Try again</button>
               <div id="sharing-group-list" class="settings-list" aria-label="Your groups"></div>
               <button class="text-button hidden-control" id="sharing-new-group" type="button">Create another group</button>
-              <div id="sharing-no-group" class="sharing-empty-state"><div class="form-stack"><label><span>Group name</span><input id="group-name" placeholder="e.g. Our household" /></label><button class="primary-button" id="group-create" type="button">Create group</button></div><div class="form-stack sharing-join-box"><label><span>Got an invite? Paste the link here</span><input id="sharing-join-token" autocomplete="off" placeholder="Paste the invite link" /></label><button class="secondary-button" id="sharing-join-button" type="button">Join with invite</button></div></div>
+              <div id="sharing-no-group" class="sharing-empty-state"><div class="form-stack sharing-join-box"><strong>Got an invite?</strong><label><span>Paste the invite link here</span><input id="sharing-join-token" autocomplete="off" placeholder="Paste the invite link" /></label><button class="primary-button" id="sharing-join-button" type="button">Join with invite</button></div><div class="form-stack sharing-create-box"><strong>Or start your own group</strong><label><span>Group name</span><input id="group-name" placeholder="e.g. Our household" /></label><button class="secondary-button" id="group-create" type="button">Create group</button></div></div>
               <article id="sharing-selected-group" class="sharing-group-card hidden-control"><div><strong id="sharing-selected-group-name">Shared roster</strong><span id="sharing-selected-group-meta" class="muted">Ready to share</span></div><div class="two-col"><button class="primary-button" id="sharing-open-group" type="button">Open group</button><button class="secondary-button" id="sharing-invite-people" type="button">Invite someone</button></div></article>
             </section>
             <section id="sharing-group-detail" class="sharing-section hidden-control" aria-labelledby="sharing-detail-title">
@@ -805,7 +805,8 @@
               <div id="sharing-invite-panel" class="sharing-invite-card form-stack hidden-control">
                 <strong>Invite someone</strong>
                 <label><span>Their email</span><input id="group-invite-email" type="email" autocomplete="off" placeholder="person@example.com" /></label>
-                <div class="two-col"><button class="primary-button" id="group-invite" type="button">Create invite</button><button class="secondary-button" id="group-share-invite" type="button">Send invite</button></div>
+                <button class="primary-button full" id="group-share-invite" type="button">Send invite</button>
+                <div class="two-col"><button class="secondary-button" id="group-invite" type="button">Create link only</button><button class="secondary-button" id="group-share-invite-other" type="button">Share another way</button></div>
                 <p id="group-invite-output" class="muted" aria-live="polite"></p>
                 <label><span>Got an invite? Paste it here</span><input id="group-invite-token" placeholder="Paste the invite link" /></label>
                 <button class="secondary-button" id="group-accept" type="button">Join with invite</button>
@@ -1092,7 +1093,7 @@
             </button>
             <button type="button" data-open="about">
               <span>About & support</span>
-              <strong>V0.2.14</strong>
+              <strong>V0.2.15</strong>
             </button>
           </section>
 
@@ -1216,7 +1217,7 @@
             <div><p class="eyebrow">About</p><h1>About RosterBuddy</h1></div>
           </div>
           <section class="notice beta-policy-card">
-            <strong>Version 0.2.14 — Build: RosterBuddy™ v0.2.14 Simple Sharing.</strong>
+            <strong>Version 0.2.15 — Build: RosterBuddy™ v0.2.15 Simple Sharing.</strong>
             <span>A roster, pay-estimate, recovery-prompt, widget and calendar-export app for shift workers. Your roster stays on this device unless you sign in and choose to share it; sharing is optional and needs an internet connection.</span>
           </section>
           <section class="settings-list beta-checklist">

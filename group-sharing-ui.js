@@ -453,7 +453,9 @@
     const messages = {
       loading: 'Loading your groups…',
       'signed-out': 'Sign in from Settings > Account to see your groups. Your local roster is not affected.',
-      local: groups.length ? 'Sharing is off on this device. These groups are saved on this phone only.' : 'Sharing is off on this device. A group you create stays on this phone only.',
+      local: syncPreference && syncPreference.get() === 'unset'
+        ? (groups.length ? 'These groups are saved on this phone only until you share one.' : 'You are not in a group yet. Join with an invite, or create a group.')
+        : (groups.length ? 'Sharing is off on this device. These groups are saved on this phone only.' : 'Sharing is off on this device. A group you create stays on this phone only.'),
       offline: 'You are offline. The groups shown may be out of date, and changes need a connection.',
       empty: 'You are not in a group yet. Create one, or open an invite you were sent.',
       error: `Could not load your groups. ${hubState.error}`,
@@ -552,7 +554,7 @@
     if (calendarGroupId && calendarGroupId !== selectedGroupId) clearSharedCalendar();
     renderRosterSwitcher(switcherGroups(), current, calendarGroupId);
     // A skipped-shift warning stays on screen (it used to be overwritten by the next refresh within a second).
-    const baseStatus = current ? (cloudStatus.mode === 'cloud' ? `Signed in as ${current.displayName || current.email}.` : `Signed in as ${current.displayName || current.email}. Sharing is off on this device.`) : 'Sign in to share with a group. Your own roster stays on this phone.';
+    const baseStatus = current ? (cloudStatus.mode === 'cloud' ? `Signed in as ${current.displayName || current.email}.` : (syncPreference && syncPreference.get() === 'unset' ? `Signed in as ${current.displayName || current.email}.` : `Signed in as ${current.displayName || current.email}. Sharing is off on this device.`)) : 'Sign in to share with a group. Your own roster stays on this phone.';
     const standingNotice = current && cloudStatus.mode === 'cloud' ? uploadNotice : '';
     setStatus(standingNotice ? `${baseStatus} ${standingNotice}` : baseStatus, Boolean(standingNotice));
     // The sign-in prompt only belongs to someone who is signed out.
@@ -824,6 +826,9 @@
       const currentRoster = window.RosterBuddyGetLocalRoster ? window.RosterBuddyGetLocalRoster() : { roster: {}, templates: {} };
       const current = account();
       if (!current) throw new Error('sign in before creating a group');
+      // Creating a group is a sharing action. If cloud sync is still undecided, turn it on so the group is real and
+      // the people invited can see it; someone who chose "this device only" keeps that choice (and is told below).
+      if (syncPreference && syncPreference.get() === 'unset') ensureCloudForInvite();
       const currentStatus = adapter.status ? adapter.status() : { mode: 'local' };
       const group = await Promise.resolve(adapter.createGroup({ name: el('group-name').value, ownerId: current.id, displayName: savedDisplayName(current.id) || undefined, roster: currentRoster.roster, templates: currentRoster.templates }));
       if (!group || !group.id) throw new Error('group creation returned no group id');
@@ -834,11 +839,16 @@
       // Creating a group is the manager's choice to share with the people they invite.
       if (currentStatus.mode === 'cloud') { setGroupShare(current.id, group.id, true); rosterUploadKey = ''; }
       showCreateForm = false;
-      setStatus(`Created ${group.name}. Sharing is ready.`);
-      return `Created ${group.name}. Sharing is ready.`;
+      const phoneOnly = currentStatus.mode !== 'cloud';
+      const created = phoneOnly
+        ? `Created ${group.name} on this phone only. Turn on Sync across devices in Settings so other people can join it.`
+        : `Created ${group.name}. Sharing is ready.`;
+      setStatus(created, phoneOnly);
+      return created;
     });
   });
-  el('group-invite').addEventListener('click', () => run(async () => {
+  let lastInvitedEmail = '';
+  async function createInviteNow() {
     const group = selectedGroup() || Object.values(store.groups).find((candidate) => candidate.ownerId === account()?.id);
     if (!group) throw new Error('create a group first');
     selectGroup(group.id);
@@ -854,7 +864,10 @@
     if (handoffApi) handoffApi.write(inviteStore(), handoffApi.make({ link: invite.link, ownerId: current.id, ownerEmail: current.email, invitedEmail, source: 'owner-created' }));
     pendingInviteToken = invite.token || handoffApi.tokenFromLink(invite.link);
     el('group-invite-output').textContent = `Fresh invite created for the intended account (expires ${new Date(invite.expiresAt).toLocaleString()}). Copy or share this link now; it is single-use.`;
-  }));
+    lastInvitedEmail = invitedEmail;
+    return invite;
+  }
+  el('group-invite').addEventListener('click', () => run(async () => { await createInviteNow(); }));
   // The message the Owner sends. It names the email the invite is for, because only that account can accept it.
   function inviteMessage(link) {
     const invited = String((el('group-invite-email') || {}).value || '').trim();
@@ -874,34 +887,49 @@
       return Boolean(ok);
     } catch (_) { return false; }
   }
+  // One tap: make sure there is a fresh invite for the typed email, then hand the message to the owner's email app
+  // already addressed to that person. RosterBuddy itself cannot send email; the owner presses Send in their mail app.
+  async function ensureInviteForTypedEmail() {
+    const invited = String((el('group-invite-email') || {}).value || '').trim().toLowerCase();
+    if (!invited) throw new Error('Type the email address of the person you are inviting first.');
+    let link = el('group-invite-token').value.trim();
+    if (!link || lastInvitedEmail !== invited) {
+      await createInviteNow();
+      save(); await render();
+      link = el('group-invite-token').value.trim();
+    }
+    if (!link) throw new Error('Could not create the invite. Please try again.');
+    return { link, invited };
+  }
   el('group-share-invite').addEventListener('click', async () => {
-    const link = el('group-invite-token').value.trim();
-    if (!link) { setStatus('Create an invite first.', true); return; }
-    const message = inviteMessage(link);
+    let prepared;
+    try { prepared = await ensureInviteForTypedEmail(); } catch (error) { setStatus(error.message || 'Could not prepare the invite.', true); return; }
+    const message = inviteMessage(prepared.link);
+    const copied = await copyToClipboard(message.text);
+    try {
+      const anchor = document.createElement('a');
+      anchor.href = `mailto:${encodeURIComponent(prepared.invited)}?subject=${encodeURIComponent(message.subject)}&body=${encodeURIComponent(message.text)}`;
+      anchor.rel = 'noopener'; document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
+    } catch (_) {}
+    setStatus(`Your email app should open with the invite to ${prepared.invited}. Press Send there.${copied ? ' The message is also copied in case it does not open.' : ''}`);
+  });
+  // Any other way (Messages, WhatsApp, ...): the system share sheet.
+  el('group-share-invite-other').addEventListener('click', async () => {
+    let prepared;
+    try { prepared = await ensureInviteForTypedEmail(); } catch (error) { setStatus(error.message || 'Could not prepare the invite.', true); return; }
+    const message = inviteMessage(prepared.link);
     const native = window.RosterBuddyAndroid;
-    // 1. Installed Android app: the system share sheet (Gmail, Messages, ...).
     if (native && typeof native.shareText === 'function') {
       let opened = false;
       try { opened = native.shareText(message.subject, message.text) !== false; } catch (_) { opened = false; }
       if (opened) { setStatus('Choose how to send the invite. It only works for the email you invited.'); return; }
     }
-    // 2. Browsers that have a share sheet.
     if (navigator.share) {
-      try {
-        await navigator.share({ title: message.subject, text: message.text });
-        setStatus('Invite handed to the share sheet.');
-        return;
-      } catch (error) { if (error && error.name === 'AbortError') return; }
+      try { await navigator.share({ title: message.subject, text: message.text }); setStatus('Invite handed to the share sheet.'); return; }
+      catch (error) { if (error && error.name === 'AbortError') return; }
     }
-    // 3. Otherwise copy it and open the email app with the message filled in.
     const copied = await copyToClipboard(message.text);
-    const invited = String((el('group-invite-email') || {}).value || '').trim();
-    try {
-      const anchor = document.createElement('a');
-      anchor.href = `mailto:${encodeURIComponent(invited)}?subject=${encodeURIComponent(message.subject)}&body=${encodeURIComponent(message.text)}`;
-      anchor.rel = 'noopener'; document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
-    } catch (_) {}
-    setStatus(copied ? 'Invite message copied. If your email app did not open, paste it into a message.' : 'Copy the invite link above and send it yourself.', !copied);
+    setStatus(copied ? 'Invite message copied. Paste it into any message.' : 'Copy the invite link above and send it yourself.', !copied);
   });
 
   function acceptPastedInvite(text) {
