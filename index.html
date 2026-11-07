@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#153447" />
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <title>RosterBuddy V0.2.12</title>
+    <title>RosterBuddy V0.2.14</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -103,12 +103,12 @@
             <div class="grow">
               <p class="eyebrow brand-lockup sr-only"><span class="brand-logo" aria-hidden="true">RB</span> RosterBuddy™</p>
               <p class="eyebrow">My calendar</p>
-              <h1 id="calendar-title">June roster</h1>
+              <h1 id="calendar-title">Pay cycle roster</h1>
             </div>
           </div>
 
           <div class="scroll cal">
-          <section class="summary-strip calendar-summary-strip sumrow" id="calendar-summary" aria-label="Month summary">
+          <section class="summary-strip calendar-summary-strip sumrow" id="calendar-summary" aria-label="Pay cycle summary">
             <article class="sum"><span>Hours</span><strong id="calendar-summary-hours">0h</strong></article>
             <article class="sum"><span>Net est.</span><strong id="calendar-summary-net">$0</strong></article>
             <article class="sum"><span>Nights</span><strong id="calendar-summary-nights">0</strong></article>
@@ -769,19 +769,18 @@
 
         </section>
 
-        <section class="app-screen hidden" id="screen-share">
+        <section class="app-screen hidden" id="screen-share" data-signed-out="true">
           <div class="app-topbar">
             <div>
               <p class="eyebrow">Sharing</p>
               <h1>Sharing</h1>
             </div>
-            <button class="icon-button" type="button" data-open="calendar" aria-label="Calendar"><span class="icon-calendar"></span></button>
           </div>
 
           <section class="theme-card sharing-card" aria-labelledby="sharing-title">
             <h2 id="sharing-title">Share with your people</h2>
             <p class="muted">Pick a group, switch sharing on, and everyone in it sees your shift days. Your personal calendar stays separate, and your pay, notes and times stay private.</p>
-            <div class="sharing-account-note"><small id="sharing-account-note" class="muted">Sign-in lives in Settings &gt; Account.</small><button class="secondary-button compact" id="sharing-open-account" type="button" data-open="settings">Sign in</button></div>
+            <div class="sharing-account-note"><button class="secondary-button compact" id="sharing-open-account" type="button" data-open="settings">Sign in</button></div>
             <p id="group-session-status" class="notice" role="status" aria-live="polite">Checking sharing session…</p>
             <label class="sharing-name-row" id="sharing-profile"><span>Your name in groups</span><input id="sharing-display-name" maxlength="40" autocomplete="nickname" placeholder="e.g. Sam" /><small class="muted">Shown next to your shifts. Never your email.</small></label>
             <button class="secondary-button compact hidden-control" id="sharing-save-display-name" type="button">Save name</button>
@@ -791,7 +790,7 @@
               <button class="secondary-button compact hidden-control" id="sharing-hub-retry" type="button">Try again</button>
               <div id="sharing-group-list" class="settings-list" aria-label="Your groups"></div>
               <button class="text-button hidden-control" id="sharing-new-group" type="button">Create another group</button>
-              <div id="sharing-no-group" class="sharing-empty-state"><div class="form-stack"><label><span>Group name</span><input id="group-name" placeholder="e.g. Our household" /></label><button class="primary-button" id="group-create" type="button">Create group</button></div><p class="muted">Got an invite? Open any group, or paste it under "Invite someone".</p></div>
+              <div id="sharing-no-group" class="sharing-empty-state"><div class="form-stack"><label><span>Group name</span><input id="group-name" placeholder="e.g. Our household" /></label><button class="primary-button" id="group-create" type="button">Create group</button></div><div class="form-stack sharing-join-box"><label><span>Got an invite? Paste the link here</span><input id="sharing-join-token" autocomplete="off" placeholder="Paste the invite link" /></label><button class="secondary-button" id="sharing-join-button" type="button">Join with invite</button></div></div>
               <article id="sharing-selected-group" class="sharing-group-card hidden-control"><div><strong id="sharing-selected-group-name">Shared roster</strong><span id="sharing-selected-group-meta" class="muted">Ready to share</span></div><div class="two-col"><button class="primary-button" id="sharing-open-group" type="button">Open group</button><button class="secondary-button" id="sharing-invite-people" type="button">Invite someone</button></div></article>
             </section>
             <section id="sharing-group-detail" class="sharing-section hidden-control" aria-labelledby="sharing-detail-title">
@@ -1085,19 +1084,15 @@
             </button>
             <button type="button" data-open="privacy">
               <span>Privacy & storage</span>
-              <strong>Local</strong>
+              <strong>Read</strong>
             </button>
             <button type="button" data-open="disclaimer">
               <span>Estimate disclaimer</span>
               <strong>Read</strong>
             </button>
-            <button type="button" data-open="beta-checklist">
-              <span>Real-device beta checklist</span>
-              <strong>Test</strong>
-            </button>
             <button type="button" data-open="about">
               <span>About & support</span>
-              <strong>V0.2.12</strong>
+              <strong>V0.2.14</strong>
             </button>
           </section>
 
@@ -1172,12 +1167,11 @@
           <section class="theme-card premium-feature-list settings-list beta-checklist">
             <p class="eyebrow">What Premium includes</p>
             <article><strong>Smart Scanner</strong><span>Import shifts from a photographed or screenshotted roster, with review before import — nothing is imported automatically.</span></article>
-            <article><strong>AI Roster Assist</strong><span>AI Roster Assist is not enabled in this build. No roster data leaves your device.</span></article>
           </section>
           <section class="theme-card premium-ai-card">
             <p class="eyebrow">Coming later</p>
             <h2>AI Roster Assist</h2>
-            <p>AI Roster Assist is not enabled in this build. No roster data leaves your device.</p>
+            <p>Not enabled in this build. No roster data is sent anywhere for AI.</p>
             <button type="button" id="ai-assist-preview" disabled aria-disabled="true">AI Roster Assist — not enabled yet</button>
           </section>
         </section>
@@ -1185,16 +1179,18 @@
         <section class="app-screen hidden" id="screen-privacy">
           <div class="app-topbar">
             <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
-            <div><p class="eyebrow">Privacy</p><h1>Local-first privacy</h1></div>
+            <div><p class="eyebrow">Privacy</p><h1>Privacy &amp; storage</h1></div>
           </div>
           <section class="notice beta-policy-card">
-            <strong>Your roster stays on this device.</strong>
-            <span>RosterBuddy does not provide automatic cloud sync until you choose it. You consent to optional cloud sync in Settings. The app uses private WebView storage for roster data and private Android storage as a widget mirror.</span>
+            <strong>Your roster stays on this phone unless you share it.</strong>
+            <span>RosterBuddy works fully without an account. Your calendar, pay rules, notes and reminders are stored in private app storage on this device.</span>
           </section>
           <section class="settings-list beta-checklist">
-            <article><strong>Backups are files you control</strong><span>Exported JSON backups can contain rosters, notes, reminders, pay rules, and settings. Store them somewhere safe.</span></article>
-            <article><strong>Widgets mirror roster state</strong><span>Android widgets need a small local copy so they can display shifts outside the WebView.</span></article>
-            <article><strong>No cloud account yet</strong><span>Changing phones or reinstalling requires an exported backup JSON.</span></article>
+            <article><strong>Sharing is optional</strong><span>If you sign in and switch on "Share my roster" for a group, the people in that group see your shift days and codes, plus the name you chose. Never your pay, notes, shift times or email address. You consent to optional cloud sync in Settings.</span></article>
+            <article><strong>What an account stores</strong><span>Signing in stores your email. Creating a group stores its name. Inviting someone stores the email you typed for the invite. Sharing stores your shift days, codes and chosen name.</span></article>
+            <article><strong>Removing your shared shifts</strong><span>Switch off "Share my roster" in a group to remove your shifts from it; if you are offline you will be told, and can retry. A group owner removing you also removes them. The "Sync across devices" setting only stops new uploads.</span></article>
+            <article><strong>Backups are files you control</strong><span>Exported backups can contain rosters, notes, reminders, pay rules and settings. Store them somewhere safe. Changing phones needs a backup file, as your roster is not saved to an account.</span></article>
+            <article><strong>Widgets mirror roster state</strong><span>Android widgets keep a small private copy of your shifts so they can show them outside the app.</span></article>
           </section>
         </section>
 
@@ -1214,41 +1210,19 @@
           </section>
         </section>
 
-        <section class="app-screen hidden" id="screen-beta-checklist">
-          <div class="app-topbar">
-            <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
-            <div><p class="eyebrow">Release candidate</p><h1>Real-device beta checklist</h1></div>
-          </div>
-          <section class="notice beta-policy-card">
-            <strong>Use this before sharing a beta APK.</strong>
-            <span>Tick these manually on a real Android device, not only in the browser.</span>
-          </section>
-          <section class="settings-list beta-checklist rc-checklist">
-            <article><strong>Fresh install</strong><span>Install the APK on a clean device/profile and complete onboarding.</span></article>
-            <article><strong>Update from V10.27</strong><span>Install over the previous RosterBuddy build and confirm data remains.</span></article>
-            <article><strong>Backup export/import</strong><span>Export JSON, reset or use a second install path, then import and verify rosters/pay rules.</span></article>
-            <article><strong>Widget refresh</strong><span>Add both widgets, open the app once, tap Refresh widgets, and confirm roster codes update.</span></article>
-            <article><strong>Calendar export</strong><span>Export shifts to the phone calendar and confirm timed events/overnight shifts are correct.</span></article>
-            <article><strong>Portrait/landscape</strong><span>Rotate through Calendar, Pay, Share, Settings, and confirm the selected tab survives.</span></article>
-            <article><strong>Offline reload</strong><span>Turn on airplane mode, relaunch, and confirm app shell/data still opens locally.</span></article>
-          </section>
-        </section>
-
         <section class="app-screen hidden" id="screen-about">
           <div class="app-topbar">
             <button class="icon-button" type="button" data-back aria-label="Back"><span class="icon-back"></span></button>
             <div><p class="eyebrow">About</p><h1>About RosterBuddy</h1></div>
           </div>
           <section class="notice beta-policy-card">
-            <strong>Version 0.2.12 — Build: RosterBuddy™ v0.2.12 Simple Sharing.</strong>
-            <span>Package: com.donkeyworks.rosterbuddy. RosterBuddy™ is a local-first roster, pay-estimate, recovery-prompt, widget, and calendar-export prototype for shift workers.</span>
+            <strong>Version 0.2.14 — Build: RosterBuddy™ v0.2.14 Simple Sharing.</strong>
+            <span>A roster, pay-estimate, recovery-prompt, widget and calendar-export app for shift workers. Your roster stays on this device unless you sign in and choose to share it; sharing is optional and needs an internet connection.</span>
           </section>
           <section class="settings-list beta-checklist">
-            <article><strong>Beta support</strong><span>Export a backup before sending feedback. Include app version, Android version, what screen you were on, and what you expected to happen.</span></article>
-            <article><strong>Known beta limits</strong><span>This APK is for private testing. It is not a Play Store release and has no cloud account or automatic sync.</span></article>
-            <article><strong>Update identity</strong><span>Package: com.donkeyworks.rosterbuddy. This is the clean Play Console package for the new RosterBuddy listing and installs as a separate app from earlier private tester builds.</span></article>
-            <article><strong>If the app still looks old</strong><span>If you see an older version after installing, force close RosterBuddy and reopen it. If two RosterBuddy icons exist, open the one showing package com.donkeyworks.rosterbuddy in About for the new Play build.</span></article>
-            <article><strong>Safety reminder</strong><span>Check pay, public holidays, and recovery prompts against workplace rules before relying on them.</span></article>
+            <article><strong>Help &amp; feedback</strong><span>Export a backup before sending feedback. Include the app version, your Android version, the screen you were on, and what you expected to happen.</span></article>
+            <article><strong>Still being tested</strong><span>RosterBuddy is in testing, so mistakes are possible. Check pay, public holidays and recovery prompts against your workplace rules before relying on them.</span></article>
+            <article><strong>If the app looks out of date</strong><span>After an update, close RosterBuddy fully and reopen it. Make sure only one RosterBuddy icon is installed (package: com.donkeyworks.rosterbuddy).</span></article>
             <article><strong>Trade marks</strong><span>RosterBuddy™ and DonkeyWorks™ are trade marks of DonkeyWorks. © 2026 DonkeyWorks. All rights reserved.</span></article>
           </section>
         </section>

@@ -26,9 +26,14 @@
   let selectedGroupId = (() => {
     try { return sessionStorage.getItem(SELECTED_GROUP_STORAGE) || localStorage.getItem(SELECTED_GROUP_STORAGE) || null; } catch (_) { return null; }
   })();
+  // A received invite is kept for 15 minutes. localStorage (not sessionStorage) because the emailed sign-in link opens in a new tab.
+  function inviteStore() {
+    try { if (typeof localStorage !== 'undefined' && localStorage) return localStorage; } catch (_) {}
+    return sessionStorage;
+  }
   let pendingInviteToken = (() => {
-    const handoff = handoffApi && handoffApi.read(sessionStorage);
-    if (!handoff) { if (handoffApi) handoffApi.clear(sessionStorage); return ''; }
+    const handoff = handoffApi && handoffApi.read(inviteStore());
+    if (!handoff) { if (handoffApi) handoffApi.clear(inviteStore()); return ''; }
     return handoff.token;
   })();
   let lastAuthIdentity = null;
@@ -48,6 +53,7 @@
   let rosterUploadKey = '';
   let rosterUploadInFlight = false;
   let rosterUploadRetryAt = 0;
+  let uploadNotice = '';
   let realtimeTimer = null;
 
   function appAuth() { return window.RosterBuddyCurrentAuth || null; }
@@ -132,6 +138,7 @@
     selectGroup(null);
   }
   function clearCloudDerivedState() {
+    uploadNotice = '';
     if (activeGroupSubscription) { activeGroupSubscription(); activeGroupSubscription = null; }
     if (adapter && typeof adapter.clearCloudState === 'function') adapter.clearCloudState();
     Object.keys(store.groups).filter((id) => !/^group_/i.test(id)).forEach((id) => { delete store.groups[id]; });
@@ -231,15 +238,9 @@
     })().finally(() => { householdRestorePromise = null; });
     return householdRestorePromise;
   }
-  function currentHandoff() { return handoffApi ? handoffApi.read(sessionStorage) : null; }
+  function currentHandoff() { return handoffApi ? handoffApi.read(inviteStore()) : null; }
   function tokenFromInput(value) {
-    const raw = String(value || '').trim();
-    const marker = '/invite/';
-    if (raw.includes(marker)) {
-      try { return decodeURIComponent(raw.slice(raw.lastIndexOf(marker) + marker.length)); }
-      catch (_) { return ''; }
-    }
-    return raw;
+    return handoffApi ? handoffApi.tokenFromLink(value) : String(value || '').trim();
   }
   function renderRosterSwitcher(groups, current, activeGroupId) {
     const select = el('calendar-roster-select');
@@ -533,6 +534,10 @@
     const renderId = ++renderSeq;
     const stale = () => renderId !== renderSeq || !isCurrentUi();
     const current = account();
+    // Signed out: only the sign-in prompt is useful; name, groups, create and join need an account.
+    // Set before any await or early return below, so a failed group load can never leave a signed-in user without the hub.
+    const shareScreen = el('screen-share');
+    if (shareScreen && shareScreen.dataset) shareScreen.dataset.signedOut = current ? 'false' : 'true';
     syncIdentityPreference(current);
     const cloudStatus = adapter.status ? adapter.status() : { mode: 'local', reason: 'backend-not-configured' };
     const syncStatus = el('group-sync-status');
@@ -546,7 +551,10 @@
     if (stale()) return;
     if (calendarGroupId && calendarGroupId !== selectedGroupId) clearSharedCalendar();
     renderRosterSwitcher(switcherGroups(), current, calendarGroupId);
-    setStatus(current ? (cloudStatus.mode === 'cloud' ? `Signed in as ${current.displayName || current.email}.` : `Signed in as ${current.displayName || current.email}. Sharing is off on this device.`) : 'Sign in to share with a group. Your own roster stays on this phone.');
+    // A skipped-shift warning stays on screen (it used to be overwritten by the next refresh within a second).
+    const baseStatus = current ? (cloudStatus.mode === 'cloud' ? `Signed in as ${current.displayName || current.email}.` : `Signed in as ${current.displayName || current.email}. Sharing is off on this device.`) : 'Sign in to share with a group. Your own roster stays on this phone.';
+    const standingNotice = current && cloudStatus.mode === 'cloud' ? uploadNotice : '';
+    setStatus(standingNotice ? `${baseStatus} ${standingNotice}` : baseStatus, Boolean(standingNotice));
     // The sign-in prompt only belongs to someone who is signed out.
     const openAccount = el('sharing-open-account');
     const accountRow = openAccount && typeof openAccount.closest === 'function' ? openAccount.closest('.sharing-account-note') : null;
@@ -636,17 +644,62 @@
   function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
   function holdInviteForGlobalAuth(token) {
     pendingInviteToken = token;
-    if (handoffApi) handoffApi.write(sessionStorage, handoffApi.make({ link: token, source: 'received' }));
-    setStatus('This connection uses the optional sharing flow. Local roster access does not require an account.');
+    if (handoffApi) handoffApi.write(inviteStore(), handoffApi.make({ link: token, source: 'received' }));
+    setStatus('Invite saved. Sign in (Settings > Account) and it will be accepted for you.');
     return;
   }
   function clearPendingInvite() {
     pendingInviteToken = '';
-    if (handoffApi) handoffApi.clear(sessionStorage);
+    if (handoffApi) handoffApi.clear(inviteStore());
+  }
+  // Joining a group needs the cloud account. This turns cloud viewing on; nothing of the person's own roster is
+  // uploaded until they switch "Share my roster" on for that group (a separate, per-group choice).
+  function ensureCloudForInvite() {
+    if (syncConsent && adapter.status && adapter.status().mode === 'cloud') return true;
+    if (syncPreference) syncPreference.set('cloud-enabled');
+    syncConsent = syncPreference ? syncPreference.canUpload() : true;
+    adapter = makeAdapter();
+    return Boolean(adapter.status && adapter.status().mode === 'cloud');
+  }
+  let inviteResumeInFlight = false;
+  const INVITE_OUTCOME_KEY = 'rosterbuddy.inviteOutcome.v1';
+  function recordInviteOutcome(outcome) { try { localStorage.setItem(INVITE_OUTCOME_KEY, JSON.stringify({ outcome, at: Date.now(), tab: tabId })); } catch (_) {} }
+  function recentInviteOutcome() {
+    try { const saved = JSON.parse(localStorage.getItem(INVITE_OUTCOME_KEY) || 'null'); return saved && Date.now() - saved.at < 30000 ? saved.outcome : ''; } catch (_) { return ''; }
+  }
+  // Two open tabs can both see the same waiting invite (one landed on it, the other finished the emailed sign-in).
+  // Only one may accept it; an invite works once, so the second would only show a false error.
+  const INVITE_CLAIM_KEY = 'rosterbuddy.inviteClaim.v1';
+  const tabId = Math.random().toString(36).slice(2);
+  // Write the claim, wait a moment, and confirm it is still ours: two tabs checking at the same instant both see it
+  // empty, but whichever wrote last is the only one that still finds its own id afterwards.
+  async function claimInvite(token) {
+    try {
+      const now = Date.now();
+      const existing = JSON.parse(localStorage.getItem(INVITE_CLAIM_KEY) || 'null');
+      if (existing && existing.token === token && existing.tab !== tabId && now - existing.at < 60000) return false;
+      localStorage.setItem(INVITE_CLAIM_KEY, JSON.stringify({ token, tab: tabId, at: now }));
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const check = JSON.parse(localStorage.getItem(INVITE_CLAIM_KEY) || 'null');
+      return Boolean(check && check.tab === tabId);
+    } catch (_) { return true; }
   }
   async function resumePendingInvite() {
     const current = account();
-    if (!pendingInviteToken || !current) return;
+    if (!pendingInviteToken || !current || inviteResumeInFlight) return;
+    // The stored invite is gone: another tab already used it (or its 15 minutes ran out). Nothing to accept here.
+    if (handoffApi && !currentHandoff()) { pendingInviteToken = ''; return; }
+    // An invite this person just CREATED for someone else is never accepted by their own app (it would only ever error).
+    const waiting = currentHandoff();
+    if (waiting && waiting.source === 'owner-created') return;
+    inviteResumeInFlight = true;
+    try {
+      if (!(await claimInvite(pendingInviteToken))) return;
+      if (handoffApi && !currentHandoff()) { pendingInviteToken = ''; return; }
+      await resumePendingInviteNow(current);
+    } finally { inviteResumeInFlight = false; }
+  }
+  async function resumePendingInviteNow(current) {
     const handoff = currentHandoff();
     if (handoffApi && !handoffApi.belongsTo(handoff, current)) {
       clearPendingInvite();
@@ -655,7 +708,9 @@
     }
     const token = handoff ? handoff.token : pendingInviteToken;
     try {
+      if (!ensureCloudForInvite()) throw new Error('Sharing is not available on this device right now.');
       const result = await Promise.resolve(adapter.acceptInvite(token, current.email));
+      recordInviteOutcome('accepted');
       clearPendingInvite();
       await applySavedDisplayName(result.groupId, current);
       selectGroup(result.groupId);
@@ -663,7 +718,13 @@
       await render();
       const output = el('group-invite-output');
       if (output) output.textContent = 'Invite accepted. Only the shared roster projection is visible.';
-    } catch (error) { setStatus(error.message || 'Invite acceptance failed.', true); }
+      setStatus('Invite accepted. You can see this group\u2019s calendar. Your own shifts stay private until you switch on Share my roster.');
+    } catch (error) {
+      // A failed invite is not retried on every page load: the person is told, and can ask for a fresh one.
+      recordInviteOutcome('failed');
+      clearPendingInvite();
+      setStatus(`${error.message || 'Invite acceptance failed.'} Ask for a fresh invite for the email you are signed in with.`, true);
+    }
   }
   function run(action) {
     Promise.resolve().then(action).then(async (successMessage) => { save(); await render(); if (successMessage) setStatus(successMessage); })
@@ -790,39 +851,83 @@
     const invite = await Promise.resolve(adapter.createInvite(group.id, current.id, { email: invitedEmail }));
     if (!invite || !invite.link) throw new Error('invite creation returned no link');
     el('group-invite-token').value = invite.link;
-    if (handoffApi) handoffApi.write(sessionStorage, handoffApi.make({ link: invite.link, ownerId: current.id, ownerEmail: current.email, invitedEmail, source: 'owner-created' }));
+    if (handoffApi) handoffApi.write(inviteStore(), handoffApi.make({ link: invite.link, ownerId: current.id, ownerEmail: current.email, invitedEmail, source: 'owner-created' }));
     pendingInviteToken = invite.token || handoffApi.tokenFromLink(invite.link);
     el('group-invite-output').textContent = `Fresh invite created for the intended account (expires ${new Date(invite.expiresAt).toLocaleString()}). Copy or share this link now; it is single-use.`;
   }));
+  // The message the Owner sends. It names the email the invite is for, because only that account can accept it.
+  function inviteMessage(link) {
+    const invited = String((el('group-invite-email') || {}).value || '').trim();
+    return {
+      subject: 'Join my RosterBuddy shared roster',
+      text: `I\u2019ve invited you to share rosters on RosterBuddy. Open this link and sign in${invited ? ` with ${invited}` : ''} to accept. It works once and expires in 7 days.\n${link}`,
+    };
+  }
+  async function copyToClipboard(text) {
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch (_) {}
+    try {
+      const area = document.createElement('textarea');
+      area.value = text; area.setAttribute('readonly', ''); area.style.position = 'fixed'; area.style.opacity = '0';
+      document.body.appendChild(area); area.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      document.body.removeChild(area);
+      return Boolean(ok);
+    } catch (_) { return false; }
+  }
   el('group-share-invite').addEventListener('click', async () => {
     const link = el('group-invite-token').value.trim();
     if (!link) { setStatus('Create an invite first.', true); return; }
-    if (!navigator.share) { setStatus('Platform sharing is unavailable here. Copy the invite link and share it yourself.', true); return; }
-    try {
-      await navigator.share({ title: 'RosterBuddy group invite', text: 'Join my RosterBuddy shared roster:', url: link });
-      setStatus('Invite link handed to the platform share sheet.');
-    } catch (error) {
-      if (error && error.name !== 'AbortError') setStatus('Invite share was not completed; the link remains available to copy.', true);
+    const message = inviteMessage(link);
+    const native = window.RosterBuddyAndroid;
+    // 1. Installed Android app: the system share sheet (Gmail, Messages, ...).
+    if (native && typeof native.shareText === 'function') {
+      let opened = false;
+      try { opened = native.shareText(message.subject, message.text) !== false; } catch (_) { opened = false; }
+      if (opened) { setStatus('Choose how to send the invite. It only works for the email you invited.'); return; }
     }
+    // 2. Browsers that have a share sheet.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: message.subject, text: message.text });
+        setStatus('Invite handed to the share sheet.');
+        return;
+      } catch (error) { if (error && error.name === 'AbortError') return; }
+    }
+    // 3. Otherwise copy it and open the email app with the message filled in.
+    const copied = await copyToClipboard(message.text);
+    const invited = String((el('group-invite-email') || {}).value || '').trim();
+    try {
+      const anchor = document.createElement('a');
+      anchor.href = `mailto:${encodeURIComponent(invited)}?subject=${encodeURIComponent(message.subject)}&body=${encodeURIComponent(message.text)}`;
+      anchor.rel = 'noopener'; document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
+    } catch (_) {}
+    setStatus(copied ? 'Invite message copied. If your email app did not open, paste it into a message.' : 'Copy the invite link above and send it yourself.', !copied);
   });
 
-  el('group-accept').addEventListener('click', () => {
+  function acceptPastedInvite(text) {
+    const typed = tokenFromInput(text);
     const handoff = currentHandoff();
-    const token = handoff ? handoff.token : tokenFromInput(el('group-invite-token').value);
+    const token = typed || (handoff ? handoff.token : '');
     const current = account();
+    if (!token) { setStatus('Paste the invite link first.', true); return; }
     if (!current) {
-      if (!token) { setStatus('Paste an invite link first.', true); return; }
       holdInviteForGlobalAuth(token);
       return;
     }
     run(async () => {
+      if (!ensureCloudForInvite()) throw new Error('Sharing is not available on this device right now.');
       const result = await Promise.resolve(adapter.acceptInvite(token, current.email));
       await applySavedDisplayName(result.groupId, current);
       selectGroup(result.groupId);
       clearPendingInvite();
       el('group-invite-output').textContent = 'Invite accepted. Only the shared roster projection is visible.';
+      return 'Invite accepted. You can see this group\u2019s calendar. Your own shifts stay private until you switch on Share my roster.';
     });
-  });
+  }
+  el('group-accept').addEventListener('click', () => acceptPastedInvite(el('group-invite-token').value));
+  // Same action from the empty Groups page, so a person with no group can join without creating one first.
+  const joinButton = el('sharing-join-button');
+  if (joinButton) joinButton.addEventListener('click', () => acceptPastedInvite((el('sharing-join-token') || {}).value));
   el('calendar-roster-select').addEventListener('change', (event) => {
     selectRosterView(event.target.value).catch((error) => setStatus(error.message || 'Unable to open that roster.', true));
   });
@@ -948,7 +1053,8 @@
       rosterUploadKey = key;
       rosterUploadRetryAt = 0;
       const report = adapter.rosterUploadReport ? adapter.rosterUploadReport() : null;
-      if (report && report.skipped > 0) setStatus(`${report.skipped} shift${report.skipped === 1 ? ' was' : 's were'} not shared because the code has symbols or is not 1-4 letters/digits.`, true);
+      uploadNotice = report && report.skipped > 0 ? `${report.skipped} shift${report.skipped === 1 ? ' was' : 's were'} not shared because the code has a space, an unsupported character or is not 1-4 characters.` : '';
+      if (uploadNotice) setStatus(uploadNotice, true);
     } catch (error) {
       rosterUploadRetryAt = Date.now() + 60000;
       setStatus(error.message || 'Roster update failed.', true);
@@ -962,7 +1068,42 @@
     uploadMyRoster(group, current);
   }, 1000);
   window.RosterBuddyCalendarMonthChanged = () => { if (calendarGroupId) refreshOpenCalendar(); };
-  render();
+  // An https invite link (.../#invite=TOKEN): keep the token, take it out of the address bar, open Share, and accept it
+  // as soon as the person is signed in. The emailed sign-in may open in another tab, hence the stored handoff.
+  function captureLandedInvite() {
+    if (!handoffApi || typeof location === 'undefined') return false;
+    const token = handoffApi.inviteFromHash(location.hash);
+    if (!token) return false;
+    handoffApi.write(inviteStore(), handoffApi.make({ link: token, source: 'received' }));
+    pendingInviteToken = token;
+    // window.history on purpose: app.js has its own global named `history` (the screen list) that hides the browser's.
+    try { window.history.replaceState(null, document.title, location.pathname + location.search + handoffApi.hashWithoutInvite(location.hash)); } catch (_) {}
+    return true;
+  }
+  async function handleLandedInvite() {
+    const landed = captureLandedInvite();
+    if (landed) {
+      if (typeof showScreen === 'function') { try { showScreen('share'); } catch (_) {} }
+      await render();
+    }
+    if (!pendingInviteToken) return;
+    if (account()) await resumePendingInvite();
+    else if (landed) setStatus('You have been invited to a shared roster. Sign in with the email it was sent to and it will be accepted for you.');
+  }
+  window.addEventListener('hashchange', () => { handleLandedInvite(); });
+  // Another window of the app used the waiting invite: drop our copy and refresh, so this window shows the new group too.
+  window.addEventListener('storage', (event) => {
+    if (!handoffApi || event.key !== handoffApi.STORAGE_KEY || event.newValue) return;
+    if (!pendingInviteToken) return;
+    pendingInviteToken = '';
+    // Only a real acceptance is announced. A refusal, an expired invite or a newly created one just drops our copy.
+    if (recentInviteOutcome() !== 'accepted') return;
+    Promise.resolve(restoreCloudSelection()).then(() => render()).then(() => setStatus('Invite accepted. You can see this group\u2019s calendar. Your own shifts stay private until you switch on Share my roster.')).catch(() => {});
+  });
+  // The first-sign-in cloud popup is skipped while an invite is waiting: accepting the invite is the choice.
+  window.RosterBuddyHasPendingInvite = () => { const waiting = currentHandoff(); return Boolean(pendingInviteToken && !(waiting && waiting.source === 'owner-created')); };
+  const startupRender = render();
+  Promise.resolve(startupRender).then(() => handleLandedInvite());
   window.RosterBuddyReceiveInviteLink = (link) => {
     const token = tokenFromInput(link);
     if (!token) { setStatus('Invite link is invalid or empty.', true); return false; }

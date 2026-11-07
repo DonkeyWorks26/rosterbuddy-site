@@ -328,7 +328,7 @@
           token,
           // The server hands back only the one-time token. Build the same link the local path returns so the
           // owner can copy or share it; without it the UI rejects the invite and the token is lost.
-          link: token ? `rosterbuddy://invite/${encodeURIComponent(token)}` : undefined,
+          link: token ? `https://donkeyworks26.github.io/rosterbuddy-site/#invite=${encodeURIComponent(token)}` : undefined,
           expiresAt: row.expires_at || row.expiresAt || null,
         };
       }
@@ -499,7 +499,8 @@
           entries = [];
           localApi.projectRoster(roster || {}, templates || {}).filter((row) => row.date >= win.from && row.date <= win.to).forEach((row) => {
             const code = String(row.shiftCode || '').toUpperCase().slice(0, 4);
-            if (/^[A-Z0-9]{1,4}$/.test(code)) entries.push({ date: row.date, code }); else skipped += 1;
+            // Same rule as the Sandbox: 1-4 printable ASCII characters, no spaces (letters, digits and symbols such as 9=).
+            if (/^[!-~]{1,4}$/.test(code)) entries.push({ date: row.date, code }); else skipped += 1;
           });
           entries = entries.slice(0, MAX_UPLOAD_ENTRIES);
         }

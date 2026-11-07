@@ -240,5 +240,12 @@
 
   root.RosterBuddyLegacyMagicLink = { configured: configured(), errors: errors.slice(), status, identity, accessToken, requestMagicLink, resumeMagicLink, signOut, redirectUrl, authDiagnostic, googleSignInAvailable, googleSignInUrl, startGoogleSignIn };
   if (typeof root.addEventListener === 'function') root.addEventListener('hashchange', consumeLateCallback);
+  // The emailed sign-in link opens in a new tab and stores the session there. Other open tabs of the app pick it up
+  // (or the sign-out) from the storage event instead of staying on the old state until they are reloaded.
+  if (typeof root.addEventListener === 'function') root.addEventListener('storage', function (event) {
+    if (event && event.key !== null && event.key !== SESSION_KEY) return;
+    session = readSession();
+    notify();
+  });
   if (configured()) resumeMagicLink().catch(function () { writeSession(null); });
 })(typeof window !== 'undefined' ? window : null);

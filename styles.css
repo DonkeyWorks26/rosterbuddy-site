@@ -4261,3 +4261,8 @@ button:focus-visible, .tab:focus-visible, .day:focus-visible, summary:focus-visi
 #screen-share #group-members article > span { color: var(--text-2, inherit); font-size: .9rem; }
 
 #screen-share .sharing-section label.sharing-switch { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 14px; }
+
+/* Share tab: while signed out, hide everything that needs an account (name, groups, create, join). */
+#screen-share[data-signed-out="true"] #sharing-profile,
+#screen-share[data-signed-out="true"] #sharing-save-display-name,
+#screen-share[data-signed-out="true"] #sharing-group-hub { display: none !important; }
