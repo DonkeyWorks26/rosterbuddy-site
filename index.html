@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#153447" />
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" href="./icons/icon-192.png" />
-    <title>RosterBuddy V0.2.15</title>
+    <title>RosterBuddy V0.2.17</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -131,6 +131,7 @@
             </div>
             <div class="calendar-grid" id="calendar-grid"></div>
             <section class="calendar-shared-panel hidden-control" id="calendar-shared-panel" aria-label="Shared schedule details">
+              <p id="calendar-shared-notice" class="notice shared-notice hidden-control" role="status" aria-live="polite"></p>
               <div id="calendar-shared-filters" class="shared-filters" role="group" aria-label="Show people"></div>
               <div id="calendar-shared-detail" class="shared-detail hidden-control" aria-live="polite"></div>
               <p id="calendar-shared-empty" class="muted hidden-control">Nobody has shared shifts for this month yet.</p>
@@ -818,6 +819,14 @@
                 <div id="group-roster-preview" class="share-preview-card" aria-live="polite"></div>
                 <label class="toggle-row hidden-control"><input id="sharing-reciprocal-consent" type="checkbox" /><span>Share with a connected person after they accept.</span></label>
                 <button class="secondary-button hidden-control" id="sharing-reciprocal-enable" type="button">Request schedule sharing</button>
+                <div id="sharing-delete-zone" class="form-stack hidden-control">
+                  <button class="secondary-button" id="sharing-delete-group" type="button">Delete this group…</button>
+                  <div id="sharing-delete-confirm" class="form-stack hidden-control">
+                    <p class="notice warning" id="sharing-delete-warning" role="alert">Deleting removes this group for everyone in it and removes all the shifts people shared here. Your own calendar on this phone is not affected. This cannot be undone.</p>
+                    <label><span>Type the group name to confirm</span><input id="sharing-delete-name" autocomplete="off" /></label>
+                    <div class="two-col"><button class="secondary-button" id="sharing-delete-cancel" type="button">Cancel</button><button class="primary-button" id="sharing-delete-confirm-button" type="button" disabled>Delete forever</button></div>
+                  </div>
+                </div>
               </details>
             </section>
             <button class="secondary-button full" type="button" data-open="share-export">Send a summary</button>
@@ -1093,7 +1102,7 @@
             </button>
             <button type="button" data-open="about">
               <span>About & support</span>
-              <strong>V0.2.15</strong>
+              <strong>V0.2.17</strong>
             </button>
           </section>
 
@@ -1188,7 +1197,7 @@
           </section>
           <section class="settings-list beta-checklist">
             <article><strong>Sharing is optional</strong><span>If you sign in and switch on "Share my roster" for a group, the people in that group see your shift days and codes, plus the name you chose. Never your pay, notes, shift times or email address. You consent to optional cloud sync in Settings.</span></article>
-            <article><strong>What an account stores</strong><span>Signing in stores your email. Creating a group stores its name. Inviting someone stores the email you typed for the invite. Sharing stores your shift days, codes and chosen name.</span></article>
+            <article><strong>What an account stores</strong><span>Signing in stores your email. Creating a group stores its name. Inviting someone stores the email you typed for the invite and uses it to send them the invitation. Sharing stores your shift days, codes and chosen name.</span></article>
             <article><strong>Removing your shared shifts</strong><span>Switch off "Share my roster" in a group to remove your shifts from it; if you are offline you will be told, and can retry. A group owner removing you also removes them. The "Sync across devices" setting only stops new uploads.</span></article>
             <article><strong>Backups are files you control</strong><span>Exported backups can contain rosters, notes, reminders, pay rules and settings. Store them somewhere safe. Changing phones needs a backup file, as your roster is not saved to an account.</span></article>
             <article><strong>Widgets mirror roster state</strong><span>Android widgets keep a small private copy of your shifts so they can show them outside the app.</span></article>
@@ -1217,7 +1226,7 @@
             <div><p class="eyebrow">About</p><h1>About RosterBuddy</h1></div>
           </div>
           <section class="notice beta-policy-card">
-            <strong>Version 0.2.15 — Build: RosterBuddy™ v0.2.15 Simple Sharing.</strong>
+            <strong>Version 0.2.17 — Build: RosterBuddy™ v0.2.17 Simple Sharing.</strong>
             <span>A roster, pay-estimate, recovery-prompt, widget and calendar-export app for shift workers. Your roster stays on this device unless you sign in and choose to share it; sharing is optional and needs an internet connection.</span>
           </section>
           <section class="settings-list beta-checklist">

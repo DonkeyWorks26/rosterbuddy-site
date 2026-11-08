@@ -4266,3 +4266,34 @@ button:focus-visible, .tab:focus-visible, .day:focus-visible, summary:focus-visi
 #screen-share[data-signed-out="true"] #sharing-profile,
 #screen-share[data-signed-out="true"] #sharing-save-display-name,
 #screen-share[data-signed-out="true"] #sharing-group-hub { display: none !important; }
+
+/* Group calendar, week-by-week (0.2.17): a header row of dates per week, then one row per person. */
+body.shared-calendar-view #screen-calendar.compact-screen .weekdays, body.shared-calendar-view #calendar-weekdays { display: none; }
+body.shared-calendar-view #screen-calendar.compact-screen #calendar-pay-cycle, body.shared-calendar-view #screen-calendar.compact-screen .summary-strip, body.shared-calendar-view #screen-calendar.compact-screen .calendar-summary-strip { display: none; }
+.calendar-grid.shared-week-roster,
+#screen-calendar.compact-screen .calendar-grid.shared-week-roster,
+#screen-calendar.compact-screen .compact-calendar-card > .calendar-grid.shared-week-roster {
+  display: grid; grid-template-columns: minmax(3.2rem, 22%) repeat(7, minmax(0, 1fr)); grid-auto-rows: auto; gap: 0 2px;
+  align-content: start; height: auto; min-height: 0; flex: 1 1 auto; overflow-y: auto; scrollbar-width: thin;
+}
+.shared-week-roster .swr-corner { min-height: 0; }
+.shared-week-roster .swr-head { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 6px 0 4px; margin-top: 10px; border: 0; border-radius: 6px 6px 0 0; background: var(--surface-2, rgba(127, 127, 127, 0.12)); color: inherit; font: inherit; line-height: 1.15; }
+.shared-week-roster .swr-head b { font-size: 1rem; font-weight: 600; }
+.shared-week-roster .swr-head small { font-size: 0.78rem; opacity: 0.8; }
+.shared-week-roster .swr-head.sun { color: #D32F2F; }
+.shared-week-roster .swr-head.out { opacity: 0.4; }
+.shared-week-roster .swr-head.today { outline: 2px solid currentColor; outline-offset: -2px; }
+.shared-week-roster .swr-name { align-self: center; min-width: 0; padding: 8px 4px 8px 0; font-weight: 600; font-size: 0.9rem; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--member, inherit); }
+.shared-week-roster .swr-cell { display: flex; align-items: center; justify-content: center; min-height: 2.6rem; padding: 2px 0; border: 0; border-bottom: 1px solid rgba(127, 127, 127, 0.18); background: transparent; color: inherit; font: inherit; }
+.shared-week-roster .swr-cell.out { opacity: 0.35; }
+.shared-week-roster .swr-cell.today { background: rgba(127, 127, 127, 0.1); }
+.shared-week-roster .swr-cell.entry-target, .shared-week-roster .swr-head.entry-target { outline: 2px solid var(--accent, #0F766E); outline-offset: -2px; }
+.shared-week-roster .swr-chip { font-style: normal; font-weight: 700; font-size: 0.8rem; line-height: 1.2; padding: 3px 4px; border-radius: 7px; max-width: 100%; overflow: hidden; text-overflow: clip; white-space: nowrap; background: var(--member, #0F766E); color: #fff; }
+.swr-name.member-c0, .swr-chip.member-c0 { --member: #0F766E; }
+.swr-name.member-c1, .swr-chip.member-c1 { --member: #B45309; }
+.swr-name.member-c2, .swr-chip.member-c2 { --member: #7C3AED; }
+.swr-name.member-c3, .swr-chip.member-c3 { --member: #BE185D; }
+.swr-name.member-c4, .swr-chip.member-c4 { --member: #1D4ED8; }
+.swr-name.member-c5, .swr-chip.member-c5 { --member: #4D7C0F; }
+.shared-week-roster .swr-name.not-sharing { opacity: 0.55; font-style: italic; }
+.shared-notice { margin: 6px 0; }

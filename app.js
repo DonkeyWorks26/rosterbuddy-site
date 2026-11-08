@@ -64,7 +64,7 @@ const TEMPLATE_OFF_TYPE_REPAIR_SCHEMA_VERSION = 2;
 // Version 3 merges back the built-in templates the old drifted key allowlist
 // had already deleted from installed state.
 const TEMPLATE_BUILT_IN_RESTORE_SCHEMA_VERSION = 3;
-const APP_VERSION = "0.2.15";
+const APP_VERSION = "0.2.17";
 const FIXED_CASUAL_LOADING = 0.25;
 const TEMPLATE_COLOURS = new Set(["aqua", "coral", "amber", "violet", "green", "blue", "pink", "slate", "red", "lime", "indigo", "mint", "gold", "plum", "orange"]);
 
@@ -6962,7 +6962,7 @@ function toggleCalendarDetails() {
 function renderCalendar(direction = 0) {
   refreshMonthLabels();
   const grid = document.getElementById("calendar-grid");
-  grid.classList.remove("month-slide-next", "month-slide-prev", "month-slide-out-next", "month-slide-out-prev", "month-dragging");
+  grid.classList.remove("month-slide-next", "month-slide-prev", "month-slide-out-next", "month-slide-out-prev", "month-dragging", "shared-week-roster");
   grid.style.removeProperty("--month-drag-x");
   grid.innerHTML = "";
   if (calendarViewProjection) {
@@ -7108,36 +7108,47 @@ function renderSharedCalendar(grid, direction) {
   const legend = document.getElementById("calendar-legend");
   if (legend) { legend.innerHTML = ""; legend.classList.add("hidden-control"); }
   const byDay = model.entriesByDay(calendarViewProjection, monthKey(), calendarViewFilter);
-  const offset = firstDayOffset();
-  const days = daysInCurrentMonth();
-  const totalCells = Math.ceil((offset + days) / 7) * 7;
-  for (let cell = 0; cell < totalCells; cell += 1) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "day shared-day";
-    const day = cell - offset + 1;
-    if (day < 1 || day > days) {
-      button.classList.add("empty");
-      button.innerHTML = "<strong></strong>";
-      button.disabled = true;
-      grid.appendChild(button);
-      continue;
-    }
-    const entries = byDay[day] || [];
-    button.classList.toggle("today", sameLocalDate(dayDate(day), new Date()));
-    button.classList.toggle("entry-target", calendarViewSelectedDay === day);
-    const chips = entries.slice(0, 3).map((entry) => "<i class=\"shared-chip " + sharedMemberClass(entry.sourceUserId) + "\">" + escapeHtml(model.memberInitial(entry.displayName)) + escapeHtml(entry.shiftCode || "•") + "</i>").join("");
-    const more = entries.length > 3 ? "<i class=\"shared-chip shared-more\">+" + (entries.length - 3) + "</i>" : "";
-    button.innerHTML = "<strong>" + day + "</strong><span class=\"shared-chips\">" + chips + more + "</span>";
-    // Read-only: tapping only reveals who is on that day. It never opens entry screens.
-    button.addEventListener("click", () => {
-      calendarViewSelectedDay = day;
-      renderSharedCalendarDetail(byDay[day] || []);
-      grid.querySelectorAll(".entry-target").forEach((node) => node.classList.remove("entry-target"));
-      button.classList.add("entry-target");
+  // Week-by-week roster: a header row of dates per week, then one row per person with their shift code under each day.
+  grid.classList.add("shared-week-roster");
+  delete grid.dataset.rows;
+  const weeks = model.buildWeeks(calendarViewProjection, currentYear, currentMonth, weekStartDay, calendarViewFilter);
+  const todayKey = dateKeyForDate(new Date());
+  const letters = ["S", "M", "T", "W", "T", "F", "S"];
+  const selectDay = (day, node) => {
+    calendarViewSelectedDay = day;
+    renderSharedCalendarDetail(byDay[day] || []);
+    grid.querySelectorAll(".entry-target").forEach((other) => other.classList.remove("entry-target"));
+    if (node) node.classList.add("entry-target");
+  };
+  weeks.forEach((week) => {
+    const corner = document.createElement("div");
+    corner.className = "swr-corner";
+    grid.appendChild(corner);
+    week.days.forEach((d) => {
+      const head = document.createElement("button");
+      head.type = "button";
+      head.className = "swr-head" + (d.weekday === 0 ? " sun" : "") + (d.inMonth ? "" : " out") + (d.iso === todayKey ? " today" : "");
+      head.innerHTML = "<b>" + d.dateOfMonth + "</b><small>" + letters[d.weekday] + "</small>";
+      if (d.inMonth) head.addEventListener("click", () => selectDay(d.day, head)); else head.disabled = true;
+      grid.appendChild(head);
     });
-    grid.appendChild(button);
-  }
+    week.rows.forEach((row) => {
+      const name = document.createElement("div");
+      name.className = "swr-name " + sharedMemberClass(row.id) + (row.sharing ? "" : " not-sharing");
+      name.textContent = row.name;
+      name.title = row.sharing ? row.name : row.name + " is not sharing yet";
+      grid.appendChild(name);
+      row.cells.forEach((code, index) => {
+        const d = week.days[index];
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "swr-cell" + (d.inMonth ? "" : " out") + (d.iso === todayKey ? " today" : "") + (d.inMonth && calendarViewSelectedDay === d.day ? " entry-target" : "");
+        if (code) cell.innerHTML = "<i class=\"swr-chip " + sharedMemberClass(row.id) + "\">" + escapeHtml(code) + "</i>";
+        if (d.inMonth) cell.addEventListener("click", () => selectDay(d.day, cell)); else cell.disabled = true;
+        grid.appendChild(cell);
+      });
+    });
+  });
   renderSharedCalendarFilters();
   renderSharedCalendarDetail(calendarViewSelectedDay ? (byDay[calendarViewSelectedDay] || []) : null);
   const empty = document.getElementById("calendar-shared-empty");
@@ -8472,7 +8483,7 @@ function buildCalendarIcsForRange(range = activeShareRange()) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.15//EN",
+    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.17//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:RosterBuddy roster",
@@ -10904,7 +10915,7 @@ function cleanupOldAppCaches() {
   if (!("caches" in window)) return;
   caches.keys().then((keys) => Promise.all(
     keys
-      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-15")
+      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-17")
       .map((key) => caches.delete(key))
   )).catch((error) => {
     console.warn("RosterBuddy cache cleanup failed.", error);
@@ -10917,10 +10928,10 @@ window.RosterBuddyGetLocalRoster = () => ({ roster: JSON.parse(JSON.stringify(ro
 // Read-only member-labelled view. Rows are copied through the allowlisting model
 // into calendarViewProjection; nothing is written to templates, rosters or saved
 // state, so personal roster, pay and recovery calculations are unaffected.
-window.RosterBuddySetCalendarView = (rows, label = "Shared roster") => {
+window.RosterBuddySetCalendarView = (rows, label = "Shared roster", people) => {
   const model = window.RosterBuddySharedCalendarModel;
   if (!model) return false;
-  calendarViewProjection = model.buildProjection(rows, label);
+  calendarViewProjection = model.buildProjection(rows, label, people);
   calendarViewFilter = null;
   calendarViewSelectedDay = null;
   calendarViewReadOnly = true;

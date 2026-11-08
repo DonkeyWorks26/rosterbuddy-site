@@ -35,9 +35,14 @@
     return first.toUpperCase();
   }
 
-  function buildProjection(rows, label) {
+  // people (optional): everyone in the group as [{ id, name }], so a member with no shifts yet still gets a row.
+  function buildProjection(rows, label, people) {
     const entries = [];
     const members = new Map();
+    (Array.isArray(people) ? people : []).slice(0, 200).forEach((person) => {
+      const id = String(person && person.id || '').slice(0, 64);
+      if (id && !members.has(id)) members.set(id, { id, name: safeName(person.name), sharing: person.sharing !== false });
+    });
     (Array.isArray(rows) ? rows : []).slice(0, MAX_ENTRIES).forEach((row) => {
       const date = validDate(row && row.date);
       if (!date) return;
@@ -50,7 +55,7 @@
         start: validTime(row.start), finish: validTime(row.finish),
         version: Number.isFinite(Number(row.version)) ? Number(row.version) : 0,
       });
-      if (!members.has(sourceUserId)) members.set(sourceUserId, { id: sourceUserId, name: displayName });
+      if (!members.has(sourceUserId)) members.set(sourceUserId, { id: sourceUserId, name: displayName, sharing: true });
     });
     return {
       label: String(label || 'Shared roster').slice(0, 80),
@@ -83,5 +88,42 @@
     return `${entry.displayName} — ${code}${entry.label}${times}`;
   }
 
-  return { buildProjection, entriesByDay, describeEntry, memberInitial, safeName, validDate, isVisible, FALLBACK_NAME };
+  const pad2 = (n) => String(n).padStart(2, '0');
+  // Week-by-week roster: one block per week, a header of seven dates, then one row per person with the shift code
+  // under each day. year/month are the viewed month (month is 0-11); weekStartDay is 0 (Sunday), 1 (Monday) or 6 (Saturday).
+  // Days outside the viewed month are present (so the header is a full week) but carry no shifts: only this month was read.
+  function buildWeeks(projection, year, month, weekStartDay, visibleIds) {
+    const start = [0, 1, 6].includes(Number(weekStartDay)) ? Number(weekStartDay) : 0;
+    const monthPrefix = `${year}-${pad2(month + 1)}`;
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const offset = (new Date(Date.UTC(year, month, 1)).getUTCDay() - start + 7) % 7;
+    const total = Math.ceil((offset + daysInMonth) / 7) * 7;
+    const people = ((projection && projection.members) || []).filter((member) => isVisible({ sourceUserId: member.id }, visibleIds));
+    const codes = new Map();
+    ((projection && projection.entries) || []).forEach((entry) => {
+      if (!entry.date.startsWith(`${monthPrefix}-`) || !isVisible(entry, visibleIds)) return;
+      const key = `${entry.sourceUserId}|${Number(entry.date.slice(8, 10))}`;
+      codes.set(key, codes.has(key) ? `${codes.get(key)} ${entry.shiftCode}` : entry.shiftCode);
+    });
+    const weeks = [];
+    for (let weekStart = 0; weekStart < total; weekStart += 7) {
+      const days = [];
+      for (let i = 0; i < 7; i += 1) {
+        const dayNumber = weekStart + i - offset + 1;
+        const date = new Date(Date.UTC(year, month, dayNumber));
+        days.push({
+          day: dayNumber, inMonth: dayNumber >= 1 && dayNumber <= daysInMonth,
+          dateOfMonth: date.getUTCDate(), weekday: date.getUTCDay(),
+          iso: `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`,
+        });
+      }
+      weeks.push({
+        days,
+        rows: people.map((member) => ({ id: member.id, name: member.name, sharing: member.sharing !== false, cells: days.map((d) => (d.inMonth ? (codes.get(`${member.id}|${d.day}`) || '') : '')) })),
+      });
+    }
+    return weeks;
+  }
+
+  return { buildProjection, buildWeeks, entriesByDay, describeEntry, memberInitial, safeName, validDate, isVisible, FALLBACK_NAME };
 });

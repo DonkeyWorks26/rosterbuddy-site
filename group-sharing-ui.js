@@ -282,15 +282,16 @@
     if (!name || !adapter.setDisplayName || !adapter.status || adapter.status().mode !== 'cloud') return;
     try { await Promise.resolve(adapter.setDisplayName(groupId, name)); } catch (_) { /* the name can be set again from the group screen */ }
   }
-  // Stop sharing with a group: record the choice first, then remove what was uploaded.
+  // Stop sharing with a group. The server flag is the truth: it is switched off (which also removes my shifts) first, and
+  // only once that is confirmed does this device stop uploading. If it fails, the person is told they are STILL sharing.
   async function withdrawSharing(group, current) {
-    setGroupShare(current.id, group.id, false);
-    rosterUploadKey = '';
     try {
       await Promise.resolve(adapter.stopSharing(group.id));
+      setGroupShare(current.id, group.id, false);
+      rosterUploadKey = '';
       return { ok: true, message: `Stopped sharing with ${group.name || 'this group'}. Your shifts were removed from it.` };
     } catch (error) {
-      return { ok: false, message: `Sharing is off, but your shifts could not be removed from the group right now. Switch sharing on and off again to retry. ${error.message || ''}`.trim() };
+      return { ok: false, message: `Could not turn sharing off right now, so you are still sharing with ${group.name || 'this group'}. Check your connection and try again. ${error.message || ''}`.trim() };
     }
   }
   // What the live Sandbox supports; the reciprocal/consent RPCs are not deployed there, so their controls stay hidden.
@@ -322,10 +323,27 @@
     const rows = await Promise.resolve(adapter.readSharedRoster(group.id, current.id));
     return rows.map((row) => Object.assign({}, row, { sourceUserId: group.ownerId || 'local', displayName: group.name || 'Shared roster' }));
   }
+  // Mutual sharing: say plainly why shifts are hidden, instead of showing a blank roster.
+  function updateSharedNotice(group, current, rows) {
+    const node = el('calendar-shared-notice');
+    if (!node) return;
+    const cloud = adapter && adapter.status && adapter.status().mode === 'cloud';
+    let text = '';
+    if (cloud && group && current) {
+      const people = (rows && rows.people) || [];
+      const meSharing = groupShareOn(current.id, group.id);
+      const waiting = people.filter((person) => String(person.id) !== String(current.id) && person.sharing === false).map((person) => person.name);
+      if (!meSharing) text = 'You are not sharing your roster, so you cannot see anyone else\u2019s shifts. Turn on \u201CShare my roster\u201D in this group (Share tab). People only see each other while both are sharing.';
+      else if (waiting.length) text = `Not sharing yet: ${waiting.join(', ')}. You will see their shifts once they turn sharing on.`;
+    }
+    node.textContent = text;
+    node.classList.toggle('hidden-control', !text);
+  }
   async function showGroupCalendar(group, current, onlyUserId) {
     const rows = await loadGroupRows(group, current);
     if (adapter.cacheSharedProjection && adapter.status().mode !== 'cloud') adapter.cacheSharedProjection(group.id, rows);
-    if (typeof window.RosterBuddySetCalendarView === 'function') window.RosterBuddySetCalendarView(rows, group.name || 'Shared roster');
+    if (typeof window.RosterBuddySetCalendarView === 'function') window.RosterBuddySetCalendarView(rows, group.name || 'Shared roster', rows && rows.people);
+    updateSharedNotice(group, current, rows);
     calendarGroupId = group.id;
     if (onlyUserId && typeof window.RosterBuddySetCalendarMemberFilter === 'function') window.RosterBuddySetCalendarMemberFilter([onlyUserId]);
     const title = document.querySelector('#screen-calendar .app-topbar .eyebrow:not(.brand-lockup)');
@@ -385,7 +403,8 @@
       const rows = await loadGroupRows(group, current);
       if (calendarGroupId !== group.id) return;
       const state = window.RosterBuddyCalendarViewState ? window.RosterBuddyCalendarViewState() : { filter: null };
-      window.RosterBuddySetCalendarView(rows, group.name || 'Shared roster');
+      window.RosterBuddySetCalendarView(rows, group.name || 'Shared roster', rows && rows.people);
+      updateSharedNotice(group, current, rows);
       if (state.filter && window.RosterBuddySetCalendarMemberFilter) window.RosterBuddySetCalendarMemberFilter(state.filter);
     } catch (error) {
       if (isAccessError(error)) { handleAccessLost(group.id); return; }
@@ -436,6 +455,8 @@
     try {
       const groups = await Promise.resolve(adapter.listGroupSummaries());
       if (requestId !== hubRequestId || !isCurrentUi()) return;
+      // The server flag is the truth for "am I sharing in this group": keep this device's upload switch in step with it.
+      groups.forEach((g) => { if (g && g.id && typeof g.sharing === 'boolean') setGroupShare(current.id, g.id, g.sharing); });
       hubState = { status: groups.length ? 'ready' : 'empty', groups, error: '' };
     } catch (error) {
       if (requestId !== hubRequestId || !isCurrentUi()) return;
@@ -506,6 +527,8 @@
     const meta = el('sharing-detail-meta');
     const permissions = el('sharing-permissions');
     const manages = group.ownerId === current.id;
+    const deleteZone = el('sharing-delete-zone');
+    if (deleteZone) deleteZone.classList.toggle('hidden-control', !(manages && cloud));
     const info = hubState.groups.find((candidate) => String(candidate.id) === String(group.id));
     if (meta) {
       const count = info ? `${info.memberCount} ${info.memberCount === 1 ? 'person' : 'people'} · ` : '';
@@ -621,7 +644,7 @@
       if (stale()) return;
       const pendingMarkup = pendingRequests.map((request) => `<article><strong>Schedule request from ${escapeHtml(request.sourceDisplayName)}</strong><span>Pending — nothing is shared until you accept.</span><button class="secondary-button compact" type="button" data-accept-reciprocal="${escapeHtml(request.grantId)}">Accept</button><button class="secondary-button compact" type="button" data-decline-reciprocal="${escapeHtml(request.grantId)}">Decline</button></article>`).join('');
       const cloud = cloudStatus.mode === 'cloud';
-      if (members) members.innerHTML = `<p class="eyebrow settings-section-label">People</p>${pendingMarkup}${memberRows.length ? '' : '<p class="muted">No one else is in this group yet. Invite someone to get started.</p>'}${memberRows.map((member) => `<article><strong>${escapeHtml(member.displayName || 'Connected person')}</strong><span>${member.revokedAt ? 'Access removed' : 'Connected'}</span>${current.id === group.ownerId && member.userId !== current.id && !member.revokedAt ? `<button class="secondary-button compact" type="button" data-revoke-member="${escapeHtml(member.userId)}">Remove access</button>` : ''}${consentMarkup(member, cloud && reciprocalSupported())}</article>`).join('')}`;
+      if (members) members.innerHTML = `<p class="eyebrow settings-section-label">People</p>${pendingMarkup}${memberRows.length ? '' : '<p class="muted">No one else is in this group yet. Invite someone to get started.</p>'}${memberRows.map((member) => `<article><strong>${escapeHtml(member.displayName || 'Connected person')}</strong><span>${member.revokedAt ? 'Access removed' : (member.sharing === false ? 'Connected \u00B7 not sharing yet' : 'Connected')}</span>${current.id === group.ownerId && member.userId !== current.id && !member.revokedAt ? `<button class="secondary-button compact" type="button" data-revoke-member="${escapeHtml(member.userId)}">Remove access</button>` : ''}${consentMarkup(member, cloud && reciprocalSupported())}</article>`).join('')}`;
       if (cloud) maybeUploadOutgoing(group).catch(() => {});
     } catch (error) {
       if (stale()) return;
@@ -752,7 +775,32 @@
     const toggle = el('sharing-invite-panel-toggle');
     if (toggle) toggle.textContent = 'Close invite';
   });
-  el('sharing-back-to-groups').addEventListener('click', () => setShareView(false));
+  el('sharing-back-to-groups').addEventListener('click', () => { resetDeleteGroupUi(); setShareView(false); });
+  // Delete group (owner only; the server enforces it too). Two steps: open the warning, then type the group name.
+  function resetDeleteGroupUi() {
+    const box = el('sharing-delete-confirm'); const name = el('sharing-delete-name'); const go = el('sharing-delete-confirm-button');
+    if (box) box.classList.add('hidden-control');
+    if (name) name.value = '';
+    if (go) go.disabled = true;
+  }
+  const deleteNameMatches = () => { const g = selectedGroup(); return Boolean(g && String(g.name || '').trim() && String((el('sharing-delete-name') || {}).value || '').trim().toLowerCase() === String(g.name).trim().toLowerCase()); };
+  on('sharing-delete-group', 'click', () => { const box = el('sharing-delete-confirm'); if (box) box.classList.remove('hidden-control'); });
+  on('sharing-delete-cancel', 'click', resetDeleteGroupUi);
+  on('sharing-delete-name', 'input', () => { const go = el('sharing-delete-confirm-button'); if (go) go.disabled = !deleteNameMatches(); });
+  on('sharing-delete-confirm-button', 'click', () => {
+    const group = selectedGroup(); const current = account();
+    if (!group || !current || !deleteNameMatches()) return;
+    const groupId = group.id; const groupName = group.name;
+    run(async () => {
+      // Nothing is removed locally until the server has confirmed; a failure leaves the group exactly as it was.
+      await Promise.resolve(adapter.deleteGroup(groupId));
+      handleAccessLost(groupId);
+      resetDeleteGroupUi();
+      setShareView(false);
+      try { await loadHub(); } catch (_) { /* the hub shows its own error */ }
+      return `Deleted ${groupName}.`;
+    });
+  });
   el('sharing-invite-panel-toggle').addEventListener('click', () => {
     const panel = el('sharing-invite-panel');
     if (!panel) return;
@@ -807,6 +855,7 @@
     }
     try {
       await applySavedDisplayName(group.id, current);
+      await Promise.resolve(adapter.setMySharing(group.id, true));
       setGroupShare(current.id, group.id, true);
       rosterUploadKey = '';
       await render();
@@ -837,7 +886,11 @@
       store.groups[group.id] = group;
       selectGroup(group.id);
       // Creating a group is the manager's choice to share with the people they invite.
-      if (currentStatus.mode === 'cloud') { setGroupShare(current.id, group.id, true); rosterUploadKey = ''; }
+      if (currentStatus.mode === 'cloud') {
+        // Creating a group opts the creator in. The server flag is set first; if that fails the person is simply not sharing yet.
+        try { await Promise.resolve(adapter.setMySharing(group.id, true)); setGroupShare(current.id, group.id, true); } catch (_) { setGroupShare(current.id, group.id, false); }
+        rosterUploadKey = '';
+      }
       showCreateForm = false;
       const phoneOnly = currentStatus.mode !== 'cloud';
       const created = phoneOnly
@@ -848,6 +901,7 @@
     });
   });
   let lastInvitedEmail = '';
+  let lastInvite = null;
   async function createInviteNow() {
     const group = selectedGroup() || Object.values(store.groups).find((candidate) => candidate.ownerId === account()?.id);
     if (!group) throw new Error('create a group first');
@@ -865,6 +919,7 @@
     pendingInviteToken = invite.token || handoffApi.tokenFromLink(invite.link);
     el('group-invite-output').textContent = `Fresh invite created for the intended account (expires ${new Date(invite.expiresAt).toLocaleString()}). Copy or share this link now; it is single-use.`;
     lastInvitedEmail = invitedEmail;
+    lastInvite = { groupId: group.id, invitationId: invite.invitationId || '', token: invite.token || '' };
     return invite;
   }
   el('group-invite').addEventListener('click', () => run(async () => { await createInviteNow(); }));
@@ -901,17 +956,42 @@
     if (!link) throw new Error('Could not create the invite. Please try again.');
     return { link, invited };
   }
+  const EMAIL_REASONS = {
+    rate_limited: 'You have sent several invites recently. Please wait a while, or use Share another way.',
+    invitation_too_old: 'That invite is too old to email, and a fresh one could not be sent either. Please try again in a moment.',
+    not_owner: 'Only the group owner can send invites.',
+  };
+  // The server refused this particular invitation: make a fresh one and try once more (never loop on a stale link).
+  const STALE_INVITE_REASONS = new Set(['already_sent', 'invitation_too_old', 'invitation_not_found']);
   el('group-share-invite').addEventListener('click', async () => {
-    let prepared;
+    let prepared; let emailUnavailableReason = '';
     try { prepared = await ensureInviteForTypedEmail(); } catch (error) { setStatus(error.message || 'Could not prepare the invite.', true); return; }
+    // 1. Preferred: RosterBuddy emails the invitation itself (server side). Nothing for the owner to do.
+    const canEmail = adapter && typeof adapter.sendInviteEmail === 'function' && lastInvite && lastInvite.invitationId && lastInvite.token;
+    if (canEmail) {
+      setStatus(`Sending the invite to ${prepared.invited}\u2026`);
+      let outcome = await adapter.sendInviteEmail({ groupId: lastInvite.groupId, invitationId: lastInvite.invitationId, token: lastInvite.token });
+      if (!outcome.sent && STALE_INVITE_REASONS.has(outcome.reason)) {
+        // Tapped again, or the invite went stale: make a fresh invite (this cancels the earlier one) and email that.
+        try { lastInvitedEmail = ''; prepared = await ensureInviteForTypedEmail(); } catch (error) { setStatus(error.message || 'Could not prepare the invite.', true); return; }
+        outcome = await adapter.sendInviteEmail({ groupId: lastInvite.groupId, invitationId: lastInvite.invitationId, token: lastInvite.token });
+      }
+      if (outcome.sent) { setStatus(`Invite emailed to ${prepared.invited}. They open the link, sign in with that email, and they are in.`); return; }
+      if (EMAIL_REASONS[outcome.reason]) { setStatus(EMAIL_REASONS[outcome.reason], true); return; }
+      // Any other reason (not set up yet, offline, server problem): fall through to the owner's own mail app,
+      // and say why, so a broken server path is never mistaken for the normal flow.
+      emailUnavailableReason = String(outcome.reason || 'unknown');
+    }
+    // 2. Fallback: the owner's mail app, already addressed to the invited person.
     const message = inviteMessage(prepared.link);
     const copied = await copyToClipboard(message.text);
     try {
       const anchor = document.createElement('a');
-      anchor.href = `mailto:${encodeURIComponent(prepared.invited)}?subject=${encodeURIComponent(message.subject)}&body=${encodeURIComponent(message.text)}`;
+      anchor.href = `mailto:${encodeURIComponent(prepared.invited).replace(/%40/g, '@')}?subject=${encodeURIComponent(message.subject)}&body=${encodeURIComponent(message.text)}`;
       anchor.rel = 'noopener'; document.body.appendChild(anchor); anchor.click(); document.body.removeChild(anchor);
     } catch (_) {}
-    setStatus(`Your email app should open with the invite to ${prepared.invited}. Press Send there.${copied ? ' The message is also copied in case it does not open.' : ''}`);
+    const why = emailUnavailableReason ? `Automatic email is unavailable (${emailUnavailableReason}). ` : '';
+    setStatus(`${why}Your email app should open with the invite to ${prepared.invited}. Press Send there.${copied ? ' The message is also copied in case it does not open.' : ''}`, Boolean(emailUnavailableReason));
   });
   // Any other way (Messages, WhatsApp, ...): the system share sheet.
   el('group-share-invite-other').addEventListener('click', async () => {

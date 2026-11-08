@@ -76,6 +76,7 @@
     'cannot_revoke_owner': 'cannot_revoke_owner',
     'membership_not_found': 'membership_unavailable',
     'too_many_shifts': 'invalid_input',
+    'sharing_off': 'sharing_off',
   });
   const CATEGORY_MESSAGES = Object.freeze({
     not_authorized: 'You do not have access to that group.',
@@ -83,6 +84,7 @@
     sharing_unavailable: 'That sharing request is not available.',
     membership_unavailable: 'That person is not available in this group.',
     group_unavailable: 'That group is not available.',
+    sharing_off: 'Turn on \u201CShare my roster\u201D for this group first.',
     sign_in_required: 'Sign in to continue.',
     invalid_input: 'That request was not valid.',
     owner_must_transfer: 'Remove the other members or hand over the group before leaving it.',
@@ -220,6 +222,10 @@
         p_user_id: input.memberId,
       }),
       leaveGroup: (input = {}) => rpc('leave_group', { p_group_id: input.groupId }),
+      // Owner-only on the server (is_group_owner); deleting cascades to members, invitations and shared shifts.
+      deleteGroup: (input = {}) => rpc('delete_group', { p_group_id: input.groupId }),
+      // Mutual sharing: my "I am sharing" flag for one group. Turning it off removes my shifts on the server.
+      setMyGroupSharing: (input = {}) => rpc('set_my_group_sharing', { p_group_id: input.groupId, p_enabled: input.enabled === true }),
       // These Sandbox checks always evaluate auth.uid(); never send a caller-
       // supplied user id that could create an authorization ambiguity.
       isActiveMember: (input = {}) => rpc('is_active_member', { p_group: input.groupId }),
@@ -230,6 +236,19 @@
         p_ttl_seconds: input.ttlSeconds == null ? 604800 : input.ttlSeconds,
       }),
       acceptGroupInvitation: (input = {}) => rpc('accept_group_invitation', { p_token: input.token }),
+      // Server-side invite email (Edge Function). The server reads the recipient from the stored invitation, so only
+      // ids and the one-time token are sent. Failures are returned as { error: { code } }, never thrown, so the UI can fall back.
+      sendInviteEmail: async (input = {}) => {
+        const functions = client && client.functions;
+        if (!functions || typeof functions.invoke !== 'function') return { data: null, error: { code: 'unsupported' } };
+        try {
+          const { data, error } = await functions.invoke('send-group-invite', { body: { group_id: input.groupId, invitation_id: input.invitationId, token: input.token } });
+          if (!error) return { data: data || { ok: true }, error: null };
+          let code = 'send_failed';
+          try { const body = error.context && typeof error.context.json === 'function' ? await error.context.json() : null; if (body && typeof body.error === 'string') code = body.error; } catch (_) { /* keep the generic code */ }
+          return { data: null, error: { code } };
+        } catch (_) { return { data: null, error: { code: 'network' } }; }
+      },
       revokeGroupInvitation: (input = {}) => rpc('revoke_group_invitation', { p_invitation_id: input.invitationId }),
       // Any active member uploads their OWN shifts (date_key/code), replacing what they sent for [from, to].
       // No window (null) only adds or updates. replace_group_roster below is the older owner-only call.
@@ -304,6 +323,7 @@
         displayName: String(row.display_name || row.displayName || 'Group member').slice(0, 60),
         date: row.date_key || row.dateKey,
         shiftCode: row.code == null ? '' : String(row.code).slice(0, 16),
+        sharing: row.sharing === true,
       }));
       if (name === 'listMyGroups') return (Array.isArray(data) ? data : []).map((row) => ({
         id: String(row.group_id || row.groupId || ''),
@@ -311,6 +331,7 @@
         role: row.role === 'owner' ? 'owner' : 'member',
         displayName: String(row.display_name || row.displayName || 'Group member').slice(0, 60),
         memberCount: Number(row.member_count != null ? row.member_count : row.memberCount) || 0,
+        sharing: row.sharing === true,
       })).filter((row) => row.id && !/^group_/i.test(row.id));
       if (name === 'listGroupInvitations') return (Array.isArray(data) ? data : []).map((row) => ({
         id: row.invitation_id || row.invitationId || row.id,
@@ -364,7 +385,7 @@
       const seen = new Map();
       rows.forEach((row) => {
         if (!row.userId || seen.has(row.userId)) return;
-        seen.set(row.userId, { userId: row.userId, displayName: row.displayName, role: row.userId === accountId ? 'owner' : 'member', revokedAt: null, joinedAt: null });
+        seen.set(row.userId, { userId: row.userId, displayName: row.displayName, role: row.userId === accountId ? 'owner' : 'member', revokedAt: null, joinedAt: null, sharing: row.sharing === true });
       });
       return Array.from(seen.values());
     }
@@ -428,6 +449,15 @@
         if (cloudSelected()) return call('createGroupInvitation', [{ groupId, email: options.email, ttlSeconds: options.ttlMs == null ? undefined : Math.round(options.ttlMs / 1000) }], options);
         return call('createInvite', [{ groupId, actorId, email: options.email, ttlMs: options.ttlMs }], options);
       },
+      // Never throws: { sent: true, to } or { sent: false, reason }. The UI falls back to the owner's mail app.
+      sendInviteEmail: async (input = {}) => {
+        if (!cloudSelected() || !transport || typeof transport.sendInviteEmail !== 'function') return { sent: false, reason: 'not_cloud' };
+        try {
+          const result = await transport.sendInviteEmail(input);
+          if (result && result.error) return { sent: false, reason: String(result.error.code || 'send_failed') };
+          return { sent: true, to: result && result.data && result.data.to ? String(result.data.to) : '' };
+        } catch (_) { return { sent: false, reason: 'network' }; }
+      },
       revokeInvite: (invitationId) => {
         if (cloudSelected()) return call('revokeGroupInvitation', [{ invitationId }], { invitationId });
         return call('revokeInvite', [{ invitationId }], { invitationId });
@@ -440,6 +470,10 @@
       leaveGroup: (groupId, actorId) => {
         if (!cloudSelected()) throw unsupported('leaveGroup');
         return call('leaveGroup', [{ groupId, actorId }], { groupId, actorId });
+      },
+      deleteGroup: (groupId) => {
+        if (!cloudSelected()) throw unsupported('deleteGroup');
+        return call('deleteGroup', [{ groupId }], { groupId });
       },
       setMemberRestriction: (groupId, memberId, restricted) => {
         if (!cloudSelected()) throw unsupported('setMemberRestriction');
@@ -511,19 +545,15 @@
       // Withdraw: remove everything this person has shared with the group. Shifts uploaded in earlier months
       // would survive a clear of only the current window, so clear from before sharing existed up to the end of
       // the current window, in consecutive windows the server accepts. Succeeds only if every window did.
+      // Mutual sharing: the server flag is the truth. Turning it off also removes my shifts from the group on the server.
+      setMySharing: (groupId, enabled) => {
+        if (!cloudSelected()) throw unsupported('setMySharing');
+        return call('setMyGroupSharing', [{ groupId, enabled: enabled === true }], { groupId, enabled: enabled === true });
+      },
       stopSharing: (groupId) => {
         if (!cloudSelected()) throw unsupported('stopSharing');
         lastRosterReport = { sent: 0, skipped: 0 };
-        const end = uploadWindow(now()).to;
-        return (async () => {
-          let from = WITHDRAW_FROM;
-          while (from <= end) {
-            const to = addDays(from, UPLOAD_SPAN_DAYS - 1);
-            await Promise.resolve(call('upsertMyShifts', [{ groupId, shifts: [], from, to }], { groupId, shifts: [] }));
-            from = addDays(to, 1);
-          }
-          return true;
-        })();
+        return Promise.resolve(call('setMyGroupSharing', [{ groupId, enabled: false }], { groupId, enabled: false })).then(() => true);
       },
       // What the last cloud upload sent, and how many shifts were left out because their code is not 1-4 letters/digits.
       rosterUploadReport: () => ({ ...lastRosterReport }),
@@ -545,10 +575,17 @@
       resumeReciprocalSharing: () => { throw unsupported('resumeReciprocalSharing'); },
       readGroupSchedule: (groupId, range) => {
         if (!cloudSelected()) throw unsupported('readGroupSchedule');
-        return fetchGroupRows(groupId, range).then((rows) => rows.filter((row) => row.date).map((row) => ({
-          sourceUserId: row.userId, displayName: row.displayName || 'Group member', date: row.date, shiftCode: row.shiftCode,
-          label: '', start: '', finish: '', version: 0,
-        })));
+        return fetchGroupRows(groupId, range).then((rows) => {
+          const out = rows.filter((row) => row.date).map((row) => ({
+            sourceUserId: row.userId, displayName: row.displayName || 'Group member', date: row.date, shiftCode: row.shiftCode,
+            label: '', start: '', finish: '', version: 0,
+          }));
+          // Everyone in the group (including people with no shifts yet), so the calendar can give each a row.
+          const seen = new Map();
+          rows.forEach((row) => { if (row.userId && !seen.has(row.userId)) seen.set(row.userId, { id: row.userId, name: row.displayName || 'Group member', sharing: row.sharing === true }); });
+          Object.defineProperty(out, 'people', { value: Array.from(seen.values()), enumerable: false });
+          return out;
+        });
       },
       getCachedGroupSchedule: () => [],
       listGroupPeople: (groupId) => {
