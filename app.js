@@ -64,7 +64,7 @@ const TEMPLATE_OFF_TYPE_REPAIR_SCHEMA_VERSION = 2;
 // Version 3 merges back the built-in templates the old drifted key allowlist
 // had already deleted from installed state.
 const TEMPLATE_BUILT_IN_RESTORE_SCHEMA_VERSION = 3;
-const APP_VERSION = "0.2.17";
+const APP_VERSION = "0.2.18";
 const FIXED_CASUAL_LOADING = 0.25;
 const TEMPLATE_COLOURS = new Set(["aqua", "coral", "amber", "violet", "green", "blue", "pink", "slate", "red", "lime", "indigo", "mint", "gold", "plum", "orange"]);
 
@@ -102,11 +102,25 @@ function matchesShippedDefaultShape(safe, fallback) {
     && safe.colour === safeTemplateColour(fallback.colour);
 }
 
+// Calendar markers are plain codes only (1-4 letters, digits or symbols, no spaces, no emoji), so the same code
+// shows on the phone and in shared group rosters. Anything else (e.g. an old emoji marker) becomes a code made from the name.
+function plainShiftCode(value, label, fallback) {
+  const typed = String(value == null ? "" : value).trim();
+  if (/^[!-~]{1,4}$/.test(typed)) return typed;
+  const name = String(label || "").toUpperCase();
+  const words = name.match(/[A-Z0-9]+/g) || [];
+  let code = words.length > 1 ? words.map((w) => w[0]).join("") : (words[0] || "");
+  code = code.slice(0, words.length > 1 ? 4 : 1);
+  if (/^[!-~]{1,4}$/.test(code)) return code;
+  const safeFallback = String(fallback == null ? "" : fallback).trim();
+  return /^[!-~]{1,4}$/.test(safeFallback) ? safeFallback : "C";
+}
+
 function sanitizedTemplate(template, fallback = {}, key = "", legacyPayload = false) {
   const base = template && typeof template === "object" ? template : {};
   const safe = { ...fallback, ...base };
   safe.label = String(safe.label || fallback.label || "Custom").trim() || "Custom";
-  safe.icon = String(safe.icon || fallback.icon || safe.label.slice(0, 2).toUpperCase()).trim().slice(0, 8) || "C";
+  safe.icon = plainShiftCode(safe.icon || fallback.icon, safe.label, fallback.icon);
   safe.start = String(safe.start || "").trim();
   safe.finish = String(safe.finish || "").trim();
   safe.breakMinutes = Math.max(0, Number(safe.breakMinutes) || 0);
@@ -1357,7 +1371,7 @@ function builtInShortcutCode(key, template) {
 function calendarShiftCode(shiftKey, template) {
   if (!template) return "";
   const marker = String(template.icon || "").trim();
-  if (marker) return marker;
+  if (marker) return plainShiftCode(marker, template.label, "");
   const label = String(template.label || shiftKey || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   return label ? label.slice(0, 3) : "";
 }
@@ -7671,7 +7685,7 @@ function selectedColour() {
 function saveTemplate() {
   const template = templates[editingTemplateKey];
   const label = document.getElementById("template-name").value.trim() || template.label;
-  const icon = document.getElementById("template-icon").value.trim() || label.slice(0, 2).toUpperCase();
+  const icon = plainShiftCode(document.getElementById("template-icon").value, label, template.icon);
   const [start, finish] = splitTimeRange(document.getElementById("template-start").value, document.getElementById("template-finish").value);
   const breakMinutes = parseNumber(document.getElementById("template-break").value, template.breakMinutes || 0);
   const calculatedHours = shiftHours(start, finish, breakMinutes);
@@ -8483,7 +8497,7 @@ function buildCalendarIcsForRange(range = activeShareRange()) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.17//EN",
+    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.18//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:RosterBuddy roster",
@@ -10567,7 +10581,7 @@ function applyGuidedSetupDraft(draft = {}) {
     const supplied = shifts[key];
     if (!current || !supplied || typeof supplied !== "object") continue;
     const label = String(supplied.label || "").trim() || current.label;
-    const icon = (String(supplied.icon || "").trim() || current.icon || label.slice(0, 2).toUpperCase()).slice(0, 8);
+    const icon = plainShiftCode(supplied.icon || current.icon, label, current.icon);
     const rawStart = String(supplied.start || "").trim();
     const rawFinish = String(supplied.finish || "").trim();
     if (Boolean(rawStart) !== Boolean(rawFinish)) {
@@ -10778,12 +10792,6 @@ function bindNavigation() {
     document.getElementById("template-hours-hint").textContent = "Manual paid hours override";
   });
 
-  document.querySelectorAll("[data-emoji]").forEach((button) => {
-    button.addEventListener("click", () => {
-      document.getElementById("template-icon").value = button.dataset.emoji;
-    });
-  });
-
   document.querySelectorAll("[data-period]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedPayPeriod = button.dataset.period;
@@ -10915,7 +10923,7 @@ function cleanupOldAppCaches() {
   if (!("caches" in window)) return;
   caches.keys().then((keys) => Promise.all(
     keys
-      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-17")
+      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-18")
       .map((key) => caches.delete(key))
   )).catch((error) => {
     console.warn("RosterBuddy cache cleanup failed.", error);
