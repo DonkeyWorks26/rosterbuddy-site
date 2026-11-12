@@ -3759,28 +3759,28 @@ body.shared-calendar-view .calendar-pay-cycle { display: none; }
    ═════════════════════════════════════════════════════════════════════════ */
 :root {
   color-scheme: light;
-  --bg:#F4F7F7;--surface:#FFFFFF;--surface-2:#ECF1F1;--border:#DCE4E4;--border-strong:#BFCBCB;
-  --text:#14201F;--text-2:#44524F;--text-3:#5B6867;
-  --accent:#0F766E;--accent-text:#0B5F58;--accent-soft:#DDF1EE;--on-accent:#FFFFFF;--cycle:#E8F3F1;
+  --bg:#F7F4EE;--surface:#FFFFFF;--surface-2:#EFEBE2;--border:#E6E0D3;--border-strong:#CFC7B6;
+  --text:#1D2433;--text-2:#4B5468;--text-3:#626B7E;
+  --accent:#2B4C9B;--accent-text:#233F82;--accent-soft:#E3EAF8;--on-accent:#FFFFFF;--cycle:#EFE9D8;
   --ok:#17623C;--ok-soft:#D9F0E3;--warn:#7A4300;--warn-soft:#FCEBCB;--danger:#B42318;--danger-soft:#FDE7E4;
   --amber-bg:#FCEBCB;--amber-fg:#7A4300;--blue-bg:#DCE8FA;--blue-fg:#1F4A8A;--violet-bg:#E9E1F8;--violet-fg:#4F338F;--green-bg:#D9F0E3;--green-fg:#17623C;
   --aqua-bg:#D5F0EE;--aqua-fg:#0B5F58;--coral-bg:#FBE0DA;--coral-fg:#9A3412;--pink-bg:#FADCEB;--pink-fg:#9D174D;--slate-bg:#E2E8EE;--slate-fg:#334155;
   --red-bg:#FDE7E4;--red-fg:#B42318;--lime-bg:#E6F0CC;--lime-fg:#4D6410;--orange-bg:#FCE3CC;--orange-fg:#9A4A07;
-  --shadow:0 1px 2px rgba(20,32,31,.06),0 6px 18px rgba(20,32,31,.08);--shadow-sm:0 1px 2px rgba(20,32,31,.14);
+  --shadow:0 1px 2px rgba(40,34,20,.05),0 8px 24px rgba(40,34,20,.08);--shadow-sm:0 1px 3px rgba(40,34,20,.14);
   /* legacy variables follow the new tokens so untouched screens inherit them */
   --ink:var(--text);--muted:var(--text-2);--line:var(--border);--soft:var(--bg);--panel:var(--surface);--navy:var(--accent);--teal:var(--accent-text);
   --app-bg-top:var(--bg);--app-bg-bottom:var(--bg);--cell-h:54px;
 }
 body[data-theme="midnight"] {
   color-scheme: dark;
-  --bg:#0E1415;--surface:#151D1E;--surface-2:#1C2627;--border:#263233;--border-strong:#3A4849;
-  --text:#E8EFEE;--text-2:#B4C0BF;--text-3:#8FA0A0;
-  --accent:#3FBFB3;--accent-text:#6FD8CE;--accent-soft:#143634;--on-accent:#052321;--cycle:#122223;
+  --bg:#0B1112;--surface:#141C1E;--surface-2:#1B2528;--border:#243033;--border-strong:#34444A;
+  --text:#EAF1F0;--text-2:#B8C5C4;--text-3:#8CA0A0;
+  --accent:#38D0C0;--accent-text:#72E3D6;--accent-soft:#12302F;--on-accent:#04201D;--cycle:#10282A;
   --ok:#7ADBA8;--ok-soft:#143526;--warn:#F2BE72;--warn-soft:#3A2A10;--danger:#FF9A8B;--danger-soft:#3D1D1A;
   --amber-bg:#3A2A10;--amber-fg:#F2BE72;--blue-bg:#16304D;--blue-fg:#8DBBF2;--violet-bg:#2A1F47;--violet-fg:#C2AEF7;--green-bg:#143526;--green-fg:#7ADBA8;
   --aqua-bg:#143634;--aqua-fg:#6FD8CE;--coral-bg:#3D211B;--coral-fg:#F5A58F;--pink-bg:#3F1D31;--pink-fg:#F2A6CC;--slate-bg:#243038;--slate-fg:#B4C0BF;
   --red-bg:#3D1D1A;--red-fg:#FF9A8B;--lime-bg:#2C3412;--lime-fg:#C5DB7C;--orange-bg:#3A2410;--orange-fg:#F5B07A;
-  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.45);--shadow-sm:0 1px 2px rgba(0,0,0,.5);
+  --shadow:0 1px 0 rgba(255,255,255,.03) inset,0 10px 30px rgba(0,0,0,.45);--shadow-sm:0 1px 2px rgba(0,0,0,.5);
 }
 /* cell height is a ceiling now: the Calendar grid shrinks to the space left (see the polish layer) */
 
@@ -4297,3 +4297,66 @@ body.shared-calendar-view #screen-calendar.compact-screen #calendar-pay-cycle, b
 .swr-name.member-c5, .swr-chip.member-c5 { --member: #4D7C0F; }
 .shared-week-roster .swr-name.not-sharing { opacity: 0.55; font-style: italic; }
 .shared-notice { margin: 6px 0; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Visual refresh (V0.2.19): Warm Paper + Ink Blue (light) and Midnight Polished
+   (dark). Colours live in the two token blocks above; this layer only holds
+   shape and type, and it is identical in both themes. No markup or geometry
+   changes. Theme keys stay "default" / "midnight".
+   ═════════════════════════════════════════════════════════════════════════ */
+body h1 { font-family: Georgia, "Noto Serif", "Times New Roman", serif; font-weight: 700; letter-spacing: -0.01em; }
+body .eyebrow { font-weight: 600; letter-spacing: 0.1em; color: var(--text-3); }
+body .panelbox, body .theme-card, body .settings-list > button, body .summary-strip .sum { border-radius: 20px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+body .summary-strip .sum { padding: 10px 14px; }
+body .summary-strip .sum span { font-size: 10.5px; font-weight: 600; color: var(--text-3); letter-spacing: 0.08em; }
+body .summary-strip .sum strong { font-family: Georgia, "Noto Serif", "Times New Roman", serif; font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
+body #screen-calendar .calendar-grid .day, body #screen-calendar .calendar-grid > * { border-radius: 14px; border-color: var(--border); }
+body .cyc-pill { background: var(--cycle); border-color: transparent; color: var(--accent-text); font-weight: 600; }
+body .primary-button { border-radius: 999px; font-weight: 650; box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent); }
+body .secondary-button { border-radius: 999px; font-weight: 600; border-color: var(--border-strong); }
+body .seg, body .seg button { border-radius: 999px; }
+body .tabbar { border-top-color: var(--border); }
+/* Dark theme: the old Midnight rules tinted the Pay period toggle blue; follow the tokens instead. */
+body[data-theme="midnight"] .period-toggle { background: var(--surface-2); border-color: var(--border-strong); }
+body[data-theme="midnight"] .period-toggle button.active { background: var(--surface); color: var(--accent-text); }
+body[data-theme="midnight"] .primary-button { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 6px 18px color-mix(in srgb, var(--accent) 18%, transparent); font-weight: 700; }
+body[data-theme="midnight"] .summary-strip .sum strong { color: var(--accent-text); }
+/* Settings: account form (no display rules here, so .hidden-control and signed-out hiding still win). */
+body #account-settings-card label { margin-top: 14px; }
+body #account-settings-card label span { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); letter-spacing: 0.02em; }
+body #account-settings-card input { width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text); }
+body #account-settings-card .secondary-button { width: 100%; margin-top: 10px; justify-content: center; }
+/* Leftover teal/navy from the previous look now follow the theme tokens. */
+body .notice { background: var(--accent-soft); border-color: var(--border); }
+body .notice.quiet { background: var(--surface-2); border-color: var(--border); }
+body .mental-health-card { background: var(--surface); border-color: var(--border); }
+body .theme-options button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
+body .backup-action-button { background: var(--accent-soft); border-color: var(--border-strong); color: var(--accent-text); font-weight: 700; }
+body[data-theme="midnight"] .backup-action-button { background: var(--surface-2); border-color: var(--border-strong); color: var(--text); }
+body[data-theme="midnight"] .theme-options button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
+/* Dark theme: the first-generation Midnight block re-set the legacy aliases to its old navy; point them back at the tokens. */
+body[data-theme="midnight"] {
+  --ink: var(--text); --muted: var(--text-2); --line: var(--border); --soft: var(--bg); --panel: var(--surface);
+  --navy: var(--accent); --teal: var(--accent-text); --app-bg-top: var(--bg); --app-bg-bottom: var(--bg);
+}
+body[data-theme="midnight"] .day, body[data-theme="midnight"] .mini-day,
+body[data-theme="midnight"] .ring span, body[data-theme="midnight"] .breakdown .net-row,
+body[data-theme="midnight"] .notice, body[data-theme="midnight"] .fatigue-score,
+body[data-theme="midnight"] .insight-list article, body[data-theme="midnight"] .recovery-toolkit article,
+body[data-theme="midnight"] .source-note, body[data-theme="midnight"] .guided-scan-option,
+body[data-theme="midnight"] .danger-zone, body[data-theme="midnight"] .rule-group,
+body[data-theme="midnight"] .mental-health-card { background: var(--surface-2); color: var(--text); }
+body[data-theme="midnight"] .notice { background: var(--accent-soft); }
+body .eyebrow { letter-spacing: 0.08em; }
+body[data-theme="midnight"] .period-toggle button.active, body[data-theme="midnight"] .seg button.active { background: var(--accent-soft); color: var(--accent-text); }
+/* Dark theme: member names need lighter text colours (chips keep their fill colours). */
+body[data-theme="midnight"] .swr-name.member-c0 { --member: #5FD8CC; }
+body[data-theme="midnight"] .swr-name.member-c1 { --member: #F2A65E; }
+body[data-theme="midnight"] .swr-name.member-c2 { --member: #B9A0FF; }
+body[data-theme="midnight"] .swr-name.member-c3 { --member: #F28BBA; }
+body[data-theme="midnight"] .swr-name.member-c4 { --member: #8DB4FF; }
+body[data-theme="midnight"] .swr-name.member-c5 { --member: #A8D15A; }
+/* Long eyebrow in the Pay hero must stay on one line at 411px, as before the refresh. */
+body #screen-pay .pay-hero .eyebrow { letter-spacing: 0.04em; }
+/* Calendar title also shows a group's name in the group view: keep it on one line. */
+body #calendar-title { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

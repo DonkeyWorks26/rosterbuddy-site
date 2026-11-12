@@ -64,7 +64,7 @@ const TEMPLATE_OFF_TYPE_REPAIR_SCHEMA_VERSION = 2;
 // Version 3 merges back the built-in templates the old drifted key allowlist
 // had already deleted from installed state.
 const TEMPLATE_BUILT_IN_RESTORE_SCHEMA_VERSION = 3;
-const APP_VERSION = "0.2.18";
+const APP_VERSION = "0.2.19";
 const FIXED_CASUAL_LOADING = 0.25;
 const TEMPLATE_COLOURS = new Set(["aqua", "coral", "amber", "violet", "green", "blue", "pink", "slate", "red", "lime", "indigo", "mint", "gold", "plum", "orange"]);
 
@@ -8036,6 +8036,8 @@ function updateRecoveryDisplay() {
 function applyTheme(theme) {
   selectedTheme = normalizeTheme(theme);
   document.body.dataset.theme = selectedTheme;
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute("content", selectedTheme === "midnight" ? "#0B1112" : "#F7F4EE");
   document.querySelectorAll("[data-theme]").forEach((button) => {
     button.classList.toggle("active", button.dataset.theme === selectedTheme);
   });
@@ -8497,7 +8499,7 @@ function buildCalendarIcsForRange(range = activeShareRange()) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.18//EN",
+    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.19//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:RosterBuddy roster",
@@ -10923,7 +10925,7 @@ function cleanupOldAppCaches() {
   if (!("caches" in window)) return;
   caches.keys().then((keys) => Promise.all(
     keys
-      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-18")
+      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-19")
       .map((key) => caches.delete(key))
   )).catch((error) => {
     console.warn("RosterBuddy cache cleanup failed.", error);

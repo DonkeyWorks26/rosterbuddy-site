@@ -1,4 +1,4 @@
-const CACHE_NAME = "rosterbuddy-v0-2-18";
+const CACHE_NAME = "rosterbuddy-v0-2-19";
 const APP_SHELL = [
   "./",
   "./index.html",

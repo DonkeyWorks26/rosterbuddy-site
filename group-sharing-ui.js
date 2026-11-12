@@ -346,7 +346,7 @@
     updateSharedNotice(group, current, rows);
     calendarGroupId = group.id;
     if (onlyUserId && typeof window.RosterBuddySetCalendarMemberFilter === 'function') window.RosterBuddySetCalendarMemberFilter([onlyUserId]);
-    const title = document.querySelector('#screen-calendar .app-topbar .eyebrow:not(.brand-lockup)');
+    const title = document.getElementById('calendar-title');
     if (title) title.textContent = group.name || 'Shared roster';
     const readonly = el('calendar-shared-readonly');
     if (readonly) readonly.classList.remove('hidden-control');
@@ -365,7 +365,7 @@
   async function selectRosterView(value) {
     if (!value || value === 'personal') {
       clearSharedCalendar();
-      const title = document.querySelector('#screen-calendar .app-topbar .eyebrow:not(.brand-lockup)');
+      const title = document.getElementById('calendar-title');
       if (title) title.textContent = 'My calendar';
       return;
     }
