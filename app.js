@@ -64,7 +64,7 @@ const TEMPLATE_OFF_TYPE_REPAIR_SCHEMA_VERSION = 2;
 // Version 3 merges back the built-in templates the old drifted key allowlist
 // had already deleted from installed state.
 const TEMPLATE_BUILT_IN_RESTORE_SCHEMA_VERSION = 3;
-const APP_VERSION = "0.2.19";
+const APP_VERSION = "0.2.20";
 const FIXED_CASUAL_LOADING = 0.25;
 const TEMPLATE_COLOURS = new Set(["aqua", "coral", "amber", "violet", "green", "blue", "pink", "slate", "red", "lime", "indigo", "mint", "gold", "plum", "orange"]);
 
@@ -7037,8 +7037,18 @@ function renderCalendar(direction = 0) {
       ? "<span class=\"calendar-marker-row\">" + markerLabels.map((label) => "<i class=\"" + label[2] + "\">" + label[markerShort ? 1 : 0] + "</i>").join("") + "</span>"
       : "";
     const calendarTextHtml = calendarCode ? "<em class=\"calendar-main-marker\">" + escapeHtml(calendarCode) + "</em>" : "";
+    // Portrait cells show HD / OC / CAS / +H as coloured corner tags (the 9px text row under the code is hidden there).
+    // Most important first; at most two fit beside the date. One tag shows its full label, two use single letters.
+    const tagDefs = markerHtml ? [higherDuties && ["HD", "H", "mk-hd"], onCall && ["OC", "O", "mk-oc"], casual && ["CAS", "C", "mk-cas"], extraHours && ["+H", "+", "mk-xh"]].filter(Boolean) : [];
+    const tagsShown = tagDefs.slice(0, 2);
+    const tagsHtml = tagsShown.length
+      ? "<span class=\"mk-tags\">" + tagsShown.map((tag) => "<i class=\"mk-tag " + tag[2] + "\">" + tag[tagDefs.length > 1 ? 1 : 0] + "</i>").join("") + "</span>"
+      : "";
+    button.classList.toggle("has-tags", tagsShown.length > 0);
+    button.classList.toggle("tags-2", tagsShown.length > 1);
+    button.classList.toggle("has-note", Boolean(note));
     button.innerHTML = "<strong>" + day + "</strong>" + (note ? "<i class=\"nd\" aria-hidden=\"true\"></i>" : "") +
-      (markerHtml ? "<i class=\"mk-dot\" aria-hidden=\"true\"></i>" : "") +
+      tagsHtml +
       (shift ? "<span class=\"badge " + shift.colour + (markerHtml ? " has-markers mk-" + markerCount : "") + "\">" + calendarTextHtml + markerHtml + "</span>" : (markerHtml ? "<span class=\"day-meta note-meta\">" + markerHtml + "</span>" : "")) +
       (holiday ? "<span class=\"day-meta holiday-meta\">" + escapeHtml(holiday) + "</span>" : "") +
       (reminder ? "<span class=\"day-meta reminder-meta\">🔔 " + escapeHtml(reminder.text) + "</span>" : "");
@@ -8499,7 +8509,7 @@ function buildCalendarIcsForRange(range = activeShareRange()) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.19//EN",
+    "PRODID:-//RosterBuddy//Google Calendar Export V0.2.20//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "X-WR-CALNAME:RosterBuddy roster",
@@ -10925,7 +10935,7 @@ function cleanupOldAppCaches() {
   if (!("caches" in window)) return;
   caches.keys().then((keys) => Promise.all(
     keys
-      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-19")
+      .filter((key) => (key.startsWith("shiftmate-") || key.startsWith("rosterbuddy-")) && key !== "rosterbuddy-v0-2-20")
       .map((key) => caches.delete(key))
   )).catch((error) => {
     console.warn("RosterBuddy cache cleanup failed.", error);

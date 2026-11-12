@@ -4214,16 +4214,27 @@ button:focus-visible, .tab:focus-visible, .day:focus-visible, summary:focus-visi
   #screen-calendar.compact-screen .day-meta.note-meta .calendar-marker-row i { font-size: 9px; line-height: 11px; font-weight: 800; font-style: normal; color: var(--accent-text); }
 }
 
-/* Very short day cells (small phones, 6-row months): there is no room for marker text, so a dot says
-   "this day has a modifier" instead of showing cut-off letters. Tapping the day shows the detail. */
+/* Day markers as corner tags (0.2.20). Replaces the old "dot on short cells": HD / OC / CAS / +H are coloured
+   badges on the cell's top-right corner (off the date's row, so a two-digit date never collides) in every portrait cell size, so they are obvious and never cut off. The 9px text row under
+   the shift code is hidden in portrait because the tag carries the same information. Tapping a day still lists
+   every marker in full words. At most two tags fit beside the date; a third marker is only in the day detail. */
+#screen-calendar.compact-screen .day .mk-tags { display: none; } /* landscape keeps its own marker layout */
 @media (orientation: portrait) {
-  #screen-calendar.compact-screen .day { container-type: size; }
-  #screen-calendar.compact-screen .day .mk-dot { display: none; position: absolute; top: 7px; right: 14px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
-  @container (max-height: 54px) {
-    #screen-calendar.compact-screen .badge.has-markers .calendar-marker-row, #screen-calendar.compact-screen .day-meta.note-meta { display: none; }
-    #screen-calendar.compact-screen .day .mk-dot { display: block; }
-  }
+  #screen-calendar.compact-screen .day { container-type: size; overflow: visible; }
+  #screen-calendar.compact-screen .badge.has-markers .calendar-marker-row, #screen-calendar.compact-screen .day-meta.note-meta { display: none; }
+  #screen-calendar.compact-screen .day .mk-tags { position: absolute; top: -2px; right: -6px; z-index: 2; display: flex; align-items: center; gap: 2px; pointer-events: none; }
+  #screen-calendar.compact-screen .day .mk-tag { display: block; min-width: 13px; padding: 0 2.5px; border-radius: 7px; font-size: 9.5px; line-height: 14px; font-weight: 800; font-style: normal; letter-spacing: 0; text-align: center; white-space: nowrap; }
+  #screen-calendar.compact-screen .day .mk-hd { background: var(--accent); color: var(--on-accent); }
+  #screen-calendar.compact-screen .day .mk-oc { background: var(--oc-bg); color: var(--oc-fg); }
+  #screen-calendar.compact-screen .day .mk-cas, #screen-calendar.compact-screen .day .mk-xh { background: var(--text-2); color: var(--surface); }
+  /* two tags use single letters, slightly smaller */
+  #screen-calendar.compact-screen .day.tags-2 .mk-tags { gap: 1px; }
+  #screen-calendar.compact-screen .day.tags-2 .mk-tag { min-width: 10px; padding: 0 1.5px; font-size: 9px; line-height: 13px; }
+  /* the note dot leaves the top-right corner to the tags and sits bottom-left on days that have a tag */
+  #screen-calendar.compact-screen .day.has-note.has-tags .nd { top: auto; right: auto; bottom: 5px; left: 5px; }
 }
+body { --oc-bg: #B45309; --oc-fg: #FFFFFF; }
+body[data-theme="midnight"] { --oc-bg: #F2A65E; --oc-fg: #1A1204; }
 
 /* Sharing page (0.2.9): one switch, one name, one invite panel. */
 .sharing-name-row { display: grid; gap: 6px; }
